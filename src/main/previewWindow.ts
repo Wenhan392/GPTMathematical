@@ -40,11 +40,11 @@ export class ClipboardPreviewController {
 
     if (!this.window || this.window.isDestroyed()) {
       this.window = new BrowserWindow({
-        width: 980,
-        height: 760,
-        minWidth: 720,
-        minHeight: 540,
-        title: "Clipboard Preview",
+        width: 1120,
+        height: 820,
+        minWidth: 820,
+        minHeight: 620,
+        title: "GPT Mathematical",
         webPreferences: {
           preload: path.join(__dirname, "previewPreload.js"),
           contextIsolation: true,
@@ -103,7 +103,7 @@ function makePreviewUrl(content: ClipboardPreviewContent): string {
   const warnings = content.warnings.length
     ? `<div class="warnings">${content.warnings.map((warning) => `<div>${escapeHtml(warning)}</div>`).join("")}</div>`
     : "";
-  const actions = '<button id="download-word" type="button">Download Word file</button><span id="download-status"></span>';
+  const actions = '<button class="secondary-button" id="download-word" type="button">Download Word file</button><span id="download-status"></span>';
 
   const previewHtml = content.html || emptyPreviewHtml(content.plainText);
   const previewState = scriptJson({
@@ -122,8 +122,8 @@ html,
 body {
   margin: 0;
   min-height: 100%;
-  color: #111827;
-  background: #eef2f7;
+  color: #172033;
+  background: #f2f5f9;
   font-family: "Segoe UI", Arial, sans-serif;
 }
 body {
@@ -131,22 +131,66 @@ body {
   grid-template-rows: auto 1fr;
 }
 header {
-  padding: 16px 20px 13px;
-  background: #fbfcfe;
-  border-bottom: 1px solid #cfd7e3;
+  padding: 18px 22px 16px;
+  background: #ffffff;
+  border-bottom: 1px solid #d8e0eb;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
 }
 .header-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 14px;
 }
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 760;
+}
+.brand-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: #172033;
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.12);
+  position: relative;
+}
+.brand-mark::before,
+.brand-mark::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  right: 7px;
+  height: 2px;
+  border-radius: 999px;
+  background: #ffffff;
+}
+.brand-mark::before {
+  top: 9px;
+}
+.brand-mark::after {
+  top: 16px;
+  right: 12px;
+}
+.brand-tag {
+  padding: 4px 8px;
+  border: 1px solid #bbf7d0;
+  border-radius: 999px;
+  color: #166534;
+  background: #f0fdf4;
+  font-size: 11px;
+  font-weight: 760;
+  white-space: nowrap;
+}
 h1 {
-  margin: 0;
+  margin: 8px 0 0;
   min-width: 0;
   color: #0f172a;
-  font-size: 17px;
-  font-weight: 720;
+  font-size: 20px;
+  font-weight: 760;
   letter-spacing: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -156,16 +200,17 @@ h1 {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 32px;
+  min-height: 34px;
 }
 button {
-  padding: 8px 12px;
+  height: 34px;
+  padding: 0 13px;
   border: 1px solid #1d4ed8;
   border-radius: 6px;
   color: #ffffff;
   background: #2563eb;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
-  font: 700 12px/1 "Segoe UI", Arial, sans-serif;
+  font: 730 12px/1 "Segoe UI", Arial, sans-serif;
   white-space: nowrap;
 }
 button:hover {
@@ -176,43 +221,57 @@ button:disabled {
   background: #94a3b8;
   box-shadow: none;
 }
+.secondary-button {
+  border-color: #c8d2df;
+  color: #1f2937;
+  background: #ffffff;
+}
+.secondary-button:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
 #download-status {
-  max-width: 230px;
-  color: #475569;
+  max-width: 260px;
+  color: #64748b;
   font-size: 12px;
   line-height: 1.3;
 }
 .status {
-  margin-top: 6px;
-  color: #64748b;
-  font-size: 12px;
-  line-height: 1.4;
+  margin-top: 7px;
+  max-width: 840px;
+  color: #4b5d72;
+  font-size: 13px;
+  line-height: 1.45;
 }
 .import-panel {
-  margin-top: 14px;
+  margin-top: 16px;
+  padding: 12px;
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(180px, 260px) auto;
-  gap: 10px;
+  grid-template-columns: minmax(280px, 1fr) minmax(190px, 270px) auto;
+  gap: 11px;
   align-items: end;
+  border: 1px solid #d8e0eb;
+  border-radius: 8px;
+  background: #f8fafc;
 }
 .field {
   min-width: 0;
 }
 label {
   display: block;
-  margin-bottom: 5px;
+  margin-bottom: 6px;
   color: #334155;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 760;
   text-transform: uppercase;
 }
 input,
 select {
   box-sizing: border-box;
   width: 100%;
-  height: 34px;
+  height: 36px;
   padding: 8px 10px;
-  border: 1px solid #b7c2d4;
+  border: 1px solid #c5cfdd;
   border-radius: 6px;
   color: #111827;
   background: #ffffff;
@@ -230,12 +289,12 @@ select:focus {
   display: block;
 }
 #import-share {
-  height: 34px;
+  height: 36px;
 }
 #import-status {
   grid-column: 1 / -1;
-  min-height: 16px;
-  color: #64748b;
+  min-height: 17px;
+  color: #5f7085;
   font-size: 12px;
   line-height: 1.35;
 }
@@ -246,32 +305,36 @@ select:focus {
   color: #166534;
 }
 main {
-  padding: 16px 20px 20px;
+  padding: 18px 22px 22px;
   display: grid;
-  grid-template-rows: minmax(300px, 1fr) minmax(170px, 0.48fr);
-  gap: 14px;
+  grid-template-rows: minmax(330px, 1fr) minmax(180px, 0.45fr);
+  gap: 16px;
   min-height: 0;
 }
 section {
   min-height: 0;
   display: grid;
   grid-template-rows: auto 1fr;
-  padding: 12px;
-  border: 1px solid #d5dce8;
+  padding: 13px;
+  border: 1px solid #d8e0eb;
   border-radius: 8px;
   background: #ffffff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
 }
 .section-title {
-  margin-bottom: 9px;
+  margin-bottom: 10px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  color: #334155;
+  color: #243449;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 780;
   text-transform: uppercase;
+}
+.section-title span:last-child {
+  color: #64748b;
+  font-weight: 700;
 }
 iframe,
 pre {
@@ -279,7 +342,7 @@ pre {
   width: 100%;
   height: 100%;
   margin: 0;
-  border: 1px solid #d7dee9;
+  border: 1px solid #dbe3ee;
   border-radius: 6px;
   background: #ffffff;
 }
@@ -292,25 +355,41 @@ pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: #1f2937;
-  background: #f8fafc;
+  background: #fbfcfe;
   font: 12px/1.45 Consolas, "Cascadia Mono", monospace;
 }
 .warnings {
-  margin-top: 10px;
+  margin-top: 12px;
   padding: 9px 11px;
-  border: 1px solid #f59e0b;
+  border: 1px solid #f6c453;
   border-radius: 6px;
   color: #7c2d12;
   background: #fffbeb;
   font-size: 12px;
   line-height: 1.4;
 }
+@media (max-width: 900px) {
+  .header-row {
+    display: block;
+  }
+
+  .actions {
+    margin-top: 12px;
+  }
+
+  .import-panel {
+    grid-template-columns: 1fr;
+  }
+}
 </style>
 </head>
 <body>
 <header>
   <div class="header-row">
-    <h1>${escapeHtml(content.title)}</h1>
+    <div>
+      <div class="brand"><span class="brand-mark"></span><span>GPT Mathematical</span><span class="brand-tag">Local</span></div>
+      <h1>${escapeHtml(content.title)}</h1>
+    </div>
     <div class="actions">${actions}</div>
   </div>
   <div class="status">${escapeHtml(content.status)}</div>

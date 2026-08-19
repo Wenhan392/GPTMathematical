@@ -8,8 +8,8 @@ export class ToastController {
     this.close();
 
     const display = screen.getPrimaryDisplay();
-    const width = 380;
-    const height = 82;
+    const width = 410;
+    const height = 90;
     const x = Math.round(display.workArea.x + display.workArea.width - width - 20);
     const y = Math.round(display.workArea.y + display.workArea.height - height - 24);
 
@@ -56,6 +56,7 @@ export class ToastController {
 function makeToastUrl(message: string, variant: string): string {
   const accent = variant === "error" ? "#dc2626" : variant === "info" ? "#2563eb" : "#059669";
   const background = variant === "error" ? "#fef2f2" : variant === "info" ? "#eff6ff" : "#ecfdf5";
+  const border = variant === "error" ? "#fecaca" : variant === "info" ? "#bfdbfe" : "#bbf7d0";
   const title = variant === "error" ? "Action needed" : variant === "info" ? "GPT Mathematical" : "Ready";
   const html = `
 <!doctype html>
@@ -76,25 +77,37 @@ html, body {
   width: calc(100% - 8px);
   height: calc(100% - 8px);
   margin: 4px;
-  padding: 14px 15px;
+  padding: 14px 16px;
   border-radius: 8px;
   color: #0f172a;
   background: rgba(255, 255, 255, 0.97);
-  border: 1px solid rgba(148, 163, 184, 0.55);
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18);
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.2);
   display: grid;
-  grid-template-columns: 38px 1fr;
+  grid-template-columns: 40px 1fr;
   gap: 12px;
   align-items: center;
+  position: relative;
+  overflow: hidden;
+}
+.toast::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: ${accent};
 }
 .badge {
   width: 36px;
   height: 36px;
   border-radius: 999px;
-  border: 1px solid ${accent};
+  border: 1px solid ${border};
   background: ${background};
   display: grid;
   place-items: center;
+  position: relative;
 }
 .badge::after {
   content: "";
@@ -105,12 +118,12 @@ html, body {
 }
 .title {
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 780;
   line-height: 1.2;
 }
 .message {
   margin-top: 4px;
-  font-size: 12px;
+  font-size: 12.5px;
   color: #475569;
   white-space: nowrap;
   overflow: hidden;
@@ -122,7 +135,7 @@ html, body {
 <div class="toast">
   <div class="badge"></div>
   <div>
-    <div class="title">${title}</div>
+    <div class="title">${escapeForHtml(title)}</div>
     <div class="message">${escapeForHtml(message)}</div>
   </div>
 </div>

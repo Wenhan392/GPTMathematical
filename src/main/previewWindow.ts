@@ -21,10 +21,10 @@ export class ClipboardPreviewController {
 
     if (!this.window || this.window.isDestroyed()) {
       this.window = new BrowserWindow({
-        width: 780,
-        height: 720,
-        minWidth: 560,
-        minHeight: 460,
+        width: 980,
+        height: 760,
+        minWidth: 720,
+        minHeight: 540,
         title: "Clipboard Preview",
         webPreferences: {
           preload: path.join(__dirname, "previewPreload.js"),
@@ -86,8 +86,8 @@ html,
 body {
   margin: 0;
   min-height: 100%;
-  color: #172033;
-  background: #f6f7f9;
+  color: #111827;
+  background: #eef2f7;
   font-family: "Segoe UI", Arial, sans-serif;
 }
 body {
@@ -95,9 +95,9 @@ body {
   grid-template-rows: auto 1fr;
 }
 header {
-  padding: 18px 22px 14px;
-  background: #ffffff;
-  border-bottom: 1px solid #d9dee7;
+  padding: 16px 20px 13px;
+  background: #fbfcfe;
+  border-bottom: 1px solid #cfd7e3;
 }
 .header-row {
   display: flex;
@@ -107,8 +107,14 @@ header {
 }
 h1 {
   margin: 0;
-  font-size: 18px;
+  min-width: 0;
+  color: #0f172a;
+  font-size: 17px;
+  font-weight: 720;
   letter-spacing: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .actions {
   display: flex;
@@ -117,16 +123,22 @@ h1 {
   min-height: 32px;
 }
 button {
-  padding: 7px 11px;
+  padding: 8px 12px;
   border: 1px solid #1d4ed8;
   border-radius: 6px;
   color: #ffffff;
   background: #2563eb;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
   font: 700 12px/1 "Segoe UI", Arial, sans-serif;
+  white-space: nowrap;
+}
+button:hover {
+  background: #1d4ed8;
 }
 button:disabled {
   border-color: #94a3b8;
   background: #94a3b8;
+  box-shadow: none;
 }
 #download-status {
   max-width: 230px;
@@ -135,25 +147,32 @@ button:disabled {
   line-height: 1.3;
 }
 .status {
-  margin-top: 5px;
+  margin-top: 6px;
   color: #64748b;
   font-size: 12px;
+  line-height: 1.4;
 }
 main {
-  padding: 18px 22px 22px;
+  padding: 16px 20px 20px;
   display: grid;
-  grid-template-rows: minmax(260px, 1fr) minmax(160px, 0.55fr);
-  gap: 16px;
+  grid-template-rows: minmax(300px, 1fr) minmax(170px, 0.48fr);
+  gap: 14px;
   min-height: 0;
 }
 section {
   min-height: 0;
   display: grid;
   grid-template-rows: auto 1fr;
+  padding: 12px;
+  border: 1px solid #d5dce8;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
 }
 .section-title {
-  margin-bottom: 8px;
+  margin-bottom: 9px;
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   color: #334155;
@@ -167,8 +186,8 @@ pre {
   width: 100%;
   height: 100%;
   margin: 0;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
+  border: 1px solid #d7dee9;
+  border-radius: 6px;
   background: #ffffff;
 }
 iframe {
@@ -179,17 +198,19 @@ pre {
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  color: #0f172a;
+  color: #1f2937;
+  background: #f8fafc;
   font: 12px/1.45 Consolas, "Cascadia Mono", monospace;
 }
 .warnings {
   margin-top: 10px;
-  padding: 10px 12px;
+  padding: 9px 11px;
   border: 1px solid #f59e0b;
-  border-radius: 8px;
+  border-radius: 6px;
   color: #7c2d12;
   background: #fffbeb;
   font-size: 12px;
+  line-height: 1.4;
 }
 </style>
 </head>

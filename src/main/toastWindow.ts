@@ -8,8 +8,8 @@ export class ToastController {
     this.close();
 
     const display = screen.getPrimaryDisplay();
-    const width = 340;
-    const height = 74;
+    const width = 380;
+    const height = 82;
     const x = Math.round(display.workArea.x + display.workArea.width - width - 20);
     const y = Math.round(display.workArea.y + display.workArea.height - height - 24);
 
@@ -55,6 +55,8 @@ export class ToastController {
 
 function makeToastUrl(message: string, variant: string): string {
   const accent = variant === "error" ? "#dc2626" : variant === "info" ? "#2563eb" : "#059669";
+  const background = variant === "error" ? "#fef2f2" : variant === "info" ? "#eff6ff" : "#ecfdf5";
+  const title = variant === "error" ? "Action needed" : variant === "info" ? "GPT Mathematical" : "Ready";
   const html = `
 <!doctype html>
 <html>
@@ -74,30 +76,40 @@ html, body {
   width: calc(100% - 8px);
   height: calc(100% - 8px);
   margin: 4px;
-  padding: 14px 16px;
+  padding: 14px 15px;
   border-radius: 8px;
   color: #0f172a;
   background: rgba(255, 255, 255, 0.97);
-  border: 1px solid rgba(148, 163, 184, 0.7);
-  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.22);
+  border: 1px solid rgba(148, 163, 184, 0.55);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18);
   display: grid;
-  grid-template-columns: 10px 1fr;
+  grid-template-columns: 38px 1fr;
   gap: 12px;
   align-items: center;
 }
-.dot {
+.badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1px solid ${accent};
+  background: ${background};
+  display: grid;
+  place-items: center;
+}
+.badge::after {
+  content: "";
   width: 10px;
-  height: 42px;
+  height: 10px;
   border-radius: 999px;
   background: ${accent};
 }
 .title {
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 750;
   line-height: 1.2;
 }
 .message {
-  margin-top: 3px;
+  margin-top: 4px;
   font-size: 12px;
   color: #475569;
   white-space: nowrap;
@@ -108,9 +120,9 @@ html, body {
 </head>
 <body>
 <div class="toast">
-  <div class="dot"></div>
+  <div class="badge"></div>
   <div>
-    <div class="title">GPT Mathematical</div>
+    <div class="title">${title}</div>
     <div class="message">${escapeForHtml(message)}</div>
   </div>
 </div>

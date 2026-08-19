@@ -145,7 +145,8 @@ export function sharePayloadToMarkdown(
     return undefined;
   }
 
-  const assistantMessages = visibleMessages.filter((message) => message.role === "assistant");
+  const labelledMessages = labelShareMessages(visibleMessages);
+  const assistantMessages = labelledMessages.filter((message) => message.role === "assistant");
   const responseOptions = [
     { id: "all", label: "Whole chat" },
     ...assistantMessages.map((message, index) => ({
@@ -155,17 +156,16 @@ export function sharePayloadToMarkdown(
   ];
   const selectedMessage = assistantMessages.find((message) => message.id === responseId);
   const selectedResponseId = selectedMessage ? selectedMessage.id : "all";
-  const exportMessages = selectedMessage ? [selectedMessage] : visibleMessages;
+  const exportMessages = selectedMessage ? [selectedMessage] : labelledMessages;
   const markdown = exportMessages.length === 1
-    ? exportMessages[0].markdown
+    ? `## ${exportMessages[0].label}\n\n${exportMessages[0].markdown}`
     : exportMessages.map((message) => {
-      const heading = message.role === "assistant" ? "Assistant" : message.role === "user" ? "User" : "Message";
-      return `## ${heading}\n\n${message.markdown}`;
-    }).join("\n\n");
+      return `## ${message.label}\n\n${message.markdown}`;
+    }).join("\n\n---\n\n");
 
   return {
     title,
-    markdown: cleanCandidateText(selectedMessage ? selectedMessage.markdown : markdown),
+    markdown: cleanCandidateText(markdown),
     responseOptions,
     selectedResponseId
   };
@@ -174,7 +174,29 @@ export function sharePayloadToMarkdown(
 interface ShareMessageMarkdown {
   id: string;
   role: string;
+  label?: string;
   markdown: string;
+}
+
+function labelShareMessages(messages: ShareMessageMarkdown[]): Array<ShareMessageMarkdown & { label: string }> {
+  let userCount = 0;
+  let assistantCount = 0;
+  let otherCount = 0;
+
+  return messages.map((message) => {
+    if (message.role === "user") {
+      userCount += 1;
+      return { ...message, label: `User request ${userCount}` };
+    }
+
+    if (message.role === "assistant") {
+      assistantCount += 1;
+      return { ...message, label: `GPT response ${assistantCount}` };
+    }
+
+    otherCount += 1;
+    return { ...message, label: `Message ${otherCount}` };
+  });
 }
 
 function extractLinearConversationMessages(root: Record<string, unknown>): unknown[] {

@@ -110,6 +110,38 @@ describe("docxExporter", () => {
     expect(documentXml).not.toContain("\\omega");
     expect(documentXml).not.toContain("\\)");
   });
+
+  it("formats imported chat turns with readable title, section headers, separators, and tables", () => {
+    const buffer = createWordDocumentBuffer({
+      title: "Fluid mechanics chat",
+      html: "",
+      plainText: [
+        "## User request 1",
+        "",
+        "Please solve question 4.",
+        "",
+        "---",
+        "",
+        "## GPT response 1",
+        "",
+        "Use \\(Re_1\\) and summarize the result:",
+        "",
+        "| Item | Value |",
+        "| --- | --- |",
+        "| Result | Turbulent |"
+      ].join("\n")
+    });
+
+    const documentXml = readZipEntry(buffer, "word/document.xml");
+    expect(documentXml).toContain("Fluid mechanics chat");
+    expect(documentXml).toContain("User request 1");
+    expect(documentXml).toContain("GPT response 1");
+    expect(documentXml).toContain('w:fill="EFF6FF"');
+    expect(documentXml).toContain('w:fill="F0FDF4"');
+    expect(documentXml).toContain('w:color="E2E8F0"');
+    expect(documentXml).toContain('w:fill="F1F5F9"');
+    expect(documentXml).toContain("<w:tbl>");
+  });
 });
 
 function readZipEntry(buffer: Buffer, entryName: string): string {

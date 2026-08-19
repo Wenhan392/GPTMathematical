@@ -90,8 +90,8 @@ describe("sharePayloadToMarkdown", () => {
     const result = sharePayloadToMarkdown(payload);
 
     expect(result?.title).toBe("Reynolds number solution");
-    expect(result?.markdown).toContain("## User");
-    expect(result?.markdown).toContain("## Assistant");
+    expect(result?.markdown).toContain("## User request 1");
+    expect(result?.markdown).toContain("## GPT response 1");
     expect(result?.markdown).toContain("\\frac{\\pi D_1^2}{4}");
     expect(result?.markdown).toContain("Re_1");
     expect(result?.markdown).toContain("\\times 10^5");
@@ -122,7 +122,7 @@ describe("sharePayloadToMarkdown", () => {
       ]
     };
 
-    expect(sharePayloadToMarkdown(payload)?.markdown).toBe("Visible answer with \\(x_1^2\\).");
+    expect(sharePayloadToMarkdown(payload)?.markdown).toBe("## GPT response 1\n\nVisible answer with \\(x_1^2\\).");
   });
 
   it("can select one assistant response instead of exporting the whole chat", () => {
@@ -156,6 +156,6 @@ describe("sharePayloadToMarkdown", () => {
 
     expect(result?.selectedResponseId).toBe("assistant-2");
     expect(result?.responseOptions.map((option) => option.id)).toEqual(["all", "assistant-1", "assistant-2"]);
-    expect(result?.markdown).toBe("Second answer with \\(x_2\\).");
+    expect(result?.markdown).toBe("## GPT response 2\n\nSecond answer with \\(x_2\\).");
   });
 });

@@ -72,7 +72,10 @@ export function createWordDocumentBuffer(content: WordExportContent): Buffer {
 }
 
 function buildDocumentXml(content: WordExportContent): string {
-  const body = markdownToWordBody(content.plainText.trim() || htmlToReadableText(content.html));
+  const body = [
+    documentTitleParagraph(content.title),
+    markdownToWordBody(content.plainText.trim() || htmlToReadableText(content.html))
+  ].join("\n");
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">
   <w:body>
@@ -122,8 +125,19 @@ function markdownToWordBody(markdown: string): string {
       continue;
     }
 
+    if (/^-{3,}$/.test(trimmed)) {
+      blocks.push(horizontalRule());
+      continue;
+    }
+
     const heading = trimmed.match(/^(#{1,6})\s+(.+)$/);
     if (heading) {
+      const roleHeading = parseRoleHeading(heading[2]);
+      if (roleHeading) {
+        blocks.push(roleHeadingParagraph(roleHeading));
+        continue;
+      }
+
       blocks.push(textParagraph(parseInlineMarkdown(heading[2]), { headingLevel: Math.min(3, heading[1].length) }));
       continue;
     }
@@ -144,6 +158,22 @@ function markdownToWordBody(markdown: string): string {
   }
 
   return blocks.join("\n");
+}
+
+function parseRoleHeading(text: string): { role: "user" | "gpt" | "message"; text: string } | undefined {
+  if (/^User request \d+$/i.test(text)) {
+    return { role: "user", text };
+  }
+
+  if (/^GPT response \d+$/i.test(text)) {
+    return { role: "gpt", text };
+  }
+
+  if (/^Message \d+$/i.test(text)) {
+    return { role: "message", text };
+  }
+
+  return undefined;
 }
 
 function normalizeMarkdownMath(markdown: string): string {
@@ -196,10 +226,54 @@ function wordTable(rows: string[][]): string {
     </w:tblBorders>
   </w:tblPr>
   ${normalized.map((row, rowIndex) => `<w:tr>${row.map((cell) => `<w:tc>
-    <w:tcPr><w:tcW w:w="2400" w:type="dxa"/></w:tcPr>
+    <w:tcPr>
+      <w:tcW w:w="2400" w:type="dxa"/>
+      <w:tcMar>
+        <w:top w:w="90" w:type="dxa"/>
+        <w:left w:w="110" w:type="dxa"/>
+        <w:bottom w:w="90" w:type="dxa"/>
+        <w:right w:w="110" w:type="dxa"/>
+      </w:tcMar>
+      ${rowIndex === 0 ? '<w:shd w:fill="F1F5F9"/>' : ""}
+    </w:tcPr>
     ${textParagraph(parseInlineMarkdown(cell), { bold: rowIndex === 0 })}
   </w:tc>`).join("")}</w:tr>`).join("\n")}
 </w:tbl>`;
+}
+
+function documentTitleParagraph(title: string): string {
+  const cleanedTitle = title.trim() || "ChatGPT formatted export";
+  return `<w:p>
+  <w:pPr>
+    <w:spacing w:before="0" w:after="220"/>
+    <w:pBdr><w:bottom w:val="single" w:sz="8" w:space="6" w:color="CBD5E1"/></w:pBdr>
+    <w:rPr><w:b/><w:sz w:val="34"/><w:color w:val="111827"/></w:rPr>
+  </w:pPr>
+  ${wordRun(cleanedTitle, { bold: true, size: 34 })}
+</w:p>`;
+}
+
+function roleHeadingParagraph(heading: { role: "user" | "gpt" | "message"; text: string }): string {
+  const fill = heading.role === "user" ? "EFF6FF" : heading.role === "gpt" ? "F0FDF4" : "F8FAFC";
+  const border = heading.role === "user" ? "60A5FA" : heading.role === "gpt" ? "4ADE80" : "94A3B8";
+  return `<w:p>
+  <w:pPr>
+    <w:spacing w:before="260" w:after="120"/>
+    <w:shd w:fill="${fill}"/>
+    <w:pBdr><w:left w:val="single" w:sz="18" w:space="5" w:color="${border}"/></w:pBdr>
+    <w:rPr><w:b/><w:sz w:val="24"/><w:color w:val="0F172A"/></w:rPr>
+  </w:pPr>
+  ${wordRun(heading.text, { bold: true, size: 24 })}
+</w:p>`;
+}
+
+function horizontalRule(): string {
+  return `<w:p>
+  <w:pPr>
+    <w:spacing w:before="180" w:after="140"/>
+    <w:pBdr><w:bottom w:val="single" w:sz="4" w:space="1" w:color="E2E8F0"/></w:pBdr>
+  </w:pPr>
+</w:p>`;
 }
 
 function textParagraph(tokens: InlineToken[], options: { headingLevel?: number; bullet?: boolean; bold?: boolean } = {}): string {
@@ -314,14 +388,15 @@ function findNextInlineSpecial(input: string, start: number): number {
   return candidates.length ? Math.min(...candidates) : input.length;
 }
 
-function wordRun(text: string, style: { bold?: boolean; italic?: boolean }): string {
+function wordRun(text: string, style: { bold?: boolean; italic?: boolean; size?: number }): string {
   if (!text) {
     return "";
   }
 
   const runProperties = [
     style.bold ? "<w:b/>" : "",
-    style.italic ? "<w:i/>" : ""
+    style.italic ? "<w:i/>" : "",
+    style.size ? `<w:sz w:val="${style.size}"/>` : ""
   ].join("");
   return `<w:r>${runProperties ? `<w:rPr>${runProperties}</w:rPr>` : ""}<w:t xml:space="preserve">${xml(text)}</w:t></w:r>`;
 }

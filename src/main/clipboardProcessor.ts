@@ -57,6 +57,12 @@ export class ClipboardProcessor {
     return this.processSnapshot(this.deps.clipboardPort.readText(), this.deps.clipboardPort.readHTML(), true);
   }
 
+  markClipboardAsAppWritten(text: string, html: string): void {
+    const hash = hashClipboardPayload(text, html);
+    this.lastWrittenHash = hash;
+    this.lastSeenHash = hash;
+  }
+
   private async processSnapshot(text: string, html: string, manual: boolean): Promise<ProcessResult> {
     if (this.inFlight) {
       return { converted: false, reason: "Conversion already running." };

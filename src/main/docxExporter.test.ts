@@ -71,6 +71,29 @@ describe("docxExporter", () => {
     expect(documentXml).not.toContain(">epsilon<");
     expect(documentXml).not.toContain(">qquad<");
   });
+
+  it("exports boxed expressions and cases environments without leaking command words", () => {
+    const buffer = createWordDocumentBuffer({
+      title: "Cases",
+      html: "",
+      plainText: [
+        "\\[",
+        "\\boxed{x = \\begin{cases} a^2 & \\text{if } a > 0 \\\\ b_1 & \\text{otherwise} \\end{cases}}",
+        "\\]"
+      ].join("\n")
+    });
+
+    const documentXml = readZipEntry(buffer, "word/document.xml");
+    expect(documentXml).toContain("<m:borderBox>");
+    expect(documentXml).toContain("<m:d>");
+    expect(documentXml).toContain("<m:eqArr>");
+    expect(documentXml).toContain("<m:sSup>");
+    expect(documentXml).toContain("<m:sSub>");
+    expect(documentXml).not.toContain(">boxed<");
+    expect(documentXml).not.toContain(">begin<");
+    expect(documentXml).not.toContain(">cases<");
+    expect(documentXml).not.toContain(">end<");
+  });
 });
 
 function readZipEntry(buffer: Buffer, entryName: string): string {

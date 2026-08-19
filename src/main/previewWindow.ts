@@ -8,12 +8,17 @@ export interface ClipboardPreviewContent {
   plainText: string;
   warnings: string[];
   canDownloadWord?: boolean;
+  stabilizeRender?: boolean;
 }
 
 export class ClipboardPreviewController {
   private window: BrowserWindow | undefined;
+  private renderVersion = 0;
 
   show(content: ClipboardPreviewContent): void {
+    this.renderVersion += 1;
+    const renderVersion = this.renderVersion;
+
     if (!this.window || this.window.isDestroyed()) {
       this.window = new BrowserWindow({
         width: 780,
@@ -33,7 +38,17 @@ export class ClipboardPreviewController {
       });
     }
 
-    this.window.loadURL(makePreviewUrl(content));
+    const previewUrl = makePreviewUrl(content);
+    this.window.loadURL(previewUrl);
+    if (content.stabilizeRender) {
+      setTimeout(() => {
+        if (!this.window || this.window.isDestroyed() || renderVersion !== this.renderVersion) {
+          return;
+        }
+
+        this.window.loadURL(previewUrl);
+      }, 250);
+    }
     this.window.once("ready-to-show", () => this.window?.show());
     this.window.focus();
   }

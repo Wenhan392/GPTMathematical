@@ -8,6 +8,13 @@ export interface ImportedShareConversation {
   url: string;
   source: "share-api" | "embedded-markdown" | "rendered-dom";
   conversion: ConversionResult;
+  responseOptions: ShareResponseOption[];
+  selectedResponseId: string;
+}
+
+export interface ShareResponseOption {
+  id: string;
+  label: string;
 }
 
 interface ExtractedShareContent {
@@ -18,9 +25,9 @@ interface ExtractedShareContent {
   domMarkdownText: string;
 }
 
-export async function importSharedConversation(url: string, settings: AppSettings): Promise<ImportedShareConversation> {
+export async function importSharedConversation(url: string, settings: AppSettings, responseId = "all"): Promise<ImportedShareConversation> {
   const parsedUrl = validateShareUrl(url);
-  const apiConversation = await fetchSharedConversationFromApi(parsedUrl, settings);
+  const apiConversation = await fetchSharedConversationFromApi(parsedUrl, settings, responseId);
   if (apiConversation) {
     return apiConversation;
   }
@@ -33,7 +40,9 @@ export async function importSharedConversation(url: string, settings: AppSetting
       title: extracted.title || "Imported ChatGPT conversation",
       url: parsedUrl,
       source: "embedded-markdown",
-      conversion: convertToRichHtml(markdown, settings)
+      conversion: convertToRichHtml(markdown, settings),
+      responseOptions: [{ id: "all", label: "Whole imported content" }],
+      selectedResponseId: "all"
     };
   }
 
@@ -46,7 +55,9 @@ export async function importSharedConversation(url: string, settings: AppSetting
       html,
       plainText: extracted.domText,
       warnings: ["Could not find embedded Markdown; used rendered page HTML instead."]
-    }
+    },
+    responseOptions: [{ id: "all", label: "Whole imported content" }],
+    selectedResponseId: "all"
   };
 }
 
@@ -69,7 +80,7 @@ function validateShareUrl(url: string): string {
   return parsed.toString();
 }
 
-async function fetchSharedConversationFromApi(url: string, settings: AppSettings): Promise<ImportedShareConversation | undefined> {
+async function fetchSharedConversationFromApi(url: string, settings: AppSettings, responseId: string): Promise<ImportedShareConversation | undefined> {
   const shareId = extractShareId(url);
   if (!shareId) {
     return undefined;
@@ -88,7 +99,7 @@ async function fetchSharedConversationFromApi(url: string, settings: AppSettings
       return undefined;
     }
 
-    const parsed = sharePayloadToMarkdown(await response.json());
+    const parsed = sharePayloadToMarkdown(await response.json(), responseId);
     if (!parsed) {
       return undefined;
     }
@@ -97,7 +108,9 @@ async function fetchSharedConversationFromApi(url: string, settings: AppSettings
       title: parsed.title,
       url,
       source: "share-api",
-      conversion: convertToRichHtml(parsed.markdown, settings)
+      conversion: convertToRichHtml(parsed.markdown, settings),
+      responseOptions: parsed.responseOptions,
+      selectedResponseId: parsed.selectedResponseId
     };
   } catch {
     return undefined;
@@ -113,7 +126,10 @@ function extractShareId(url: string): string | undefined {
   return shareId ? decodeURIComponent(shareId) : undefined;
 }
 
-export function sharePayloadToMarkdown(payload: unknown): { title: string; markdown: string } | undefined {
+export function sharePayloadToMarkdown(
+  payload: unknown,
+  responseId = "all"
+): { title: string; markdown: string; responseOptions: ShareResponseOption[]; selectedResponseId: string } | undefined {
   const root = asRecord(payload);
   if (!root) {
     return undefined;
@@ -122,27 +138,41 @@ export function sharePayloadToMarkdown(payload: unknown): { title: string; markd
   const title = firstString(root.title, asRecord(root.conversation)?.title) ?? "Imported ChatGPT conversation";
   const messages = extractLinearConversationMessages(root);
   const visibleMessages = messages
-    .map(extractShareMessage)
+    .map((message, index) => extractShareMessage(message, index))
     .filter((message): message is ShareMessageMarkdown => Boolean(message && message.markdown.trim()));
 
   if (visibleMessages.length === 0) {
     return undefined;
   }
 
-  const markdown = visibleMessages.length === 1
-    ? visibleMessages[0].markdown
-    : visibleMessages.map((message) => {
+  const assistantMessages = visibleMessages.filter((message) => message.role === "assistant");
+  const responseOptions = [
+    { id: "all", label: "Whole chat" },
+    ...assistantMessages.map((message, index) => ({
+      id: message.id,
+      label: `Assistant response ${index + 1}: ${summarizeResponse(message.markdown)}`
+    }))
+  ];
+  const selectedMessage = assistantMessages.find((message) => message.id === responseId);
+  const selectedResponseId = selectedMessage ? selectedMessage.id : "all";
+  const exportMessages = selectedMessage ? [selectedMessage] : visibleMessages;
+  const markdown = exportMessages.length === 1
+    ? exportMessages[0].markdown
+    : exportMessages.map((message) => {
       const heading = message.role === "assistant" ? "Assistant" : message.role === "user" ? "User" : "Message";
       return `## ${heading}\n\n${message.markdown}`;
     }).join("\n\n");
 
   return {
     title,
-    markdown: cleanCandidateText(markdown)
+    markdown: cleanCandidateText(selectedMessage ? selectedMessage.markdown : markdown),
+    responseOptions,
+    selectedResponseId
   };
 }
 
 interface ShareMessageMarkdown {
+  id: string;
   role: string;
   markdown: string;
 }
@@ -165,7 +195,7 @@ function extractLinearConversationMessages(root: Record<string, unknown>): unkno
   return Object.values(mapping);
 }
 
-function extractShareMessage(entry: unknown): ShareMessageMarkdown | undefined {
+function extractShareMessage(entry: unknown, index: number): ShareMessageMarkdown | undefined {
   const entryRecord = asRecord(entry);
   if (!entryRecord) {
     return undefined;
@@ -188,9 +218,20 @@ function extractShareMessage(entry: unknown): ShareMessageMarkdown | undefined {
     : firstString(message.text, message.markdown, message.body) ?? "";
 
   return {
+    id: firstString(message.id, entryRecord.id) ?? `message-${index}`,
     role,
     markdown: cleanCandidateText(markdown)
   };
+}
+
+function summarizeResponse(markdown: string): string {
+  const summary = markdown
+    .replace(/```[\s\S]*?```/g, " code block ")
+    .replace(/\\\[[\s\S]*?\\\]|\$\$[\s\S]*?\$\$/g, " equation ")
+    .replace(/[#*_`>\-[\]()]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return (summary || "Math response").slice(0, 72);
 }
 
 function extractContentText(content: Record<string, unknown>): string {

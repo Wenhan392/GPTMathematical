@@ -63,22 +63,28 @@ app.whenReady().then(() => {
     writeWordDocument(result.filePath, latestWordExport);
     return `Saved Word file: ${result.filePath}`;
   });
-  registerShareImportIpc(async (url) => {
-    const imported = await importSharedConversation(url, settingsStore.get());
+  registerShareImportIpc(async (url, responseId) => {
+    const imported = await importSharedConversationStable(url, settingsStore.get(), responseId);
     clipboard.write({
       text: imported.conversion.plainText,
       html: imported.conversion.html
     });
+    processor.markClipboardAsAppWritten(imported.conversion.plainText, imported.conversion.html);
     showPreview(preview, {
       title: imported.title,
       status: shareImportStatus(imported.source),
       html: imported.conversion.html,
       plainText: imported.conversion.plainText,
       warnings: imported.conversion.warnings,
-      canDownloadWord: true
+      canDownloadWord: true,
+      stabilizeRender: true
     });
     notify("Imported shared conversation.", "success");
-    return shareImportResultMessage(imported.source);
+    return {
+      message: shareImportResultMessage(imported.source, imported.selectedResponseId),
+      responseOptions: imported.responseOptions,
+      selectedResponseId: imported.selectedResponseId
+    };
   });
 
   tray = new AppTray(settingsStore, {
@@ -99,6 +105,45 @@ app.whenReady().then(() => {
   notify("Running in the tray.", "info");
 });
 
+async function importSharedConversationStable(
+  url: string,
+  settings: ReturnType<SettingsStore["get"]>,
+  responseId?: string
+): Promise<Awaited<ReturnType<typeof importSharedConversation>>> {
+  const first = await importSharedConversation(url, settings, responseId);
+
+  try {
+    await delay(180);
+    const second = await importSharedConversation(url, settings, responseId ?? first.selectedResponseId);
+    return preferImportedConversation(first, second);
+  } catch {
+    return first;
+  }
+}
+
+function preferImportedConversation(
+  first: Awaited<ReturnType<typeof importSharedConversation>>,
+  second: Awaited<ReturnType<typeof importSharedConversation>>
+): Awaited<ReturnType<typeof importSharedConversation>> {
+  if (second.source === "share-api" && first.source !== "share-api") {
+    return second;
+  }
+
+  const firstScore = scoreImportedPlainText(first.conversion.plainText);
+  const secondScore = scoreImportedPlainText(second.conversion.plainText);
+  return secondScore >= firstScore ? second : first;
+}
+
+function scoreImportedPlainText(text: string): number {
+  const latexSignals = (text.match(/\\(?:frac|sqrt|sum|boxed|begin|bar|dot|epsilon|Delta)\b|\\\[|\\\(|\$\$/g) ?? []).length;
+  const flattenedSignals = (text.match(/\b(?:frac|sqrt|boxed|begincases|endcases|epsilon|qquad)\b|[A-Za-z]\d[A-Za-z]?\d/g) ?? []).length;
+  return latexSignals * 100 - flattenedSignals * 250 + Math.min(text.length, 50_000) / 10_000;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function shareImportStatus(source: "share-api" | "embedded-markdown" | "rendered-dom"): string {
   if (source === "share-api") {
     return "Imported clean shared-conversation Markdown and copied formatted content to the clipboard.";
@@ -111,9 +156,11 @@ function shareImportStatus(source: "share-api" | "embedded-markdown" | "rendered
   return "Imported rendered shared-page HTML and copied formatted content to the clipboard.";
 }
 
-function shareImportResultMessage(source: "share-api" | "embedded-markdown" | "rendered-dom"): string {
+function shareImportResultMessage(source: "share-api" | "embedded-markdown" | "rendered-dom", selectedResponseId = "all"): string {
+  const scope = selectedResponseId === "all" ? "content" : "selected response";
+
   if (source === "share-api") {
-    return "Imported clean shared-conversation Markdown, opened preview, and copied formatted content.";
+    return `Imported clean shared-conversation Markdown for the ${scope}, opened preview, and copied formatted content.`;
   }
 
   if (source === "embedded-markdown") {

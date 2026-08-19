@@ -124,4 +124,38 @@ describe("sharePayloadToMarkdown", () => {
 
     expect(sharePayloadToMarkdown(payload)?.markdown).toBe("Visible answer with \\(x_1^2\\).");
   });
+
+  it("can select one assistant response instead of exporting the whole chat", () => {
+    const payload = {
+      linear_conversation: [
+        {
+          message: {
+            id: "user-1",
+            author: { role: "user" },
+            content: { parts: ["Question"] }
+          }
+        },
+        {
+          message: {
+            id: "assistant-1",
+            author: { role: "assistant" },
+            content: { parts: ["First answer with \\(x_1\\)."] }
+          }
+        },
+        {
+          message: {
+            id: "assistant-2",
+            author: { role: "assistant" },
+            content: { parts: ["Second answer with \\(x_2\\)."] }
+          }
+        }
+      ]
+    };
+
+    const result = sharePayloadToMarkdown(payload, "assistant-2");
+
+    expect(result?.selectedResponseId).toBe("assistant-2");
+    expect(result?.responseOptions.map((option) => option.id)).toEqual(["all", "assistant-1", "assistant-2"]);
+    expect(result?.markdown).toBe("Second answer with \\(x_2\\).");
+  });
 });

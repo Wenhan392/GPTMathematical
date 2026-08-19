@@ -3,11 +3,17 @@ import { BrowserWindow, ipcMain } from "electron";
 
 let shareImportWindow: BrowserWindow | undefined;
 
-export function registerShareImportIpc(handler: (url: string) => Promise<string>): void {
-  ipcMain.handle("share-import:import", async (_event, url: string) => {
+export interface ShareImportWindowResult {
+  message: string;
+  responseOptions: Array<{ id: string; label: string }>;
+  selectedResponseId: string;
+}
+
+export function registerShareImportIpc(handler: (url: string, responseId?: string) => Promise<ShareImportWindowResult>): void {
+  ipcMain.handle("share-import:import", async (_event, url: string, responseId?: string) => {
     try {
-      const message = await handler(url);
-      return { ok: true, message };
+      const result = await handler(url, responseId);
+      return { ok: true, ...result };
     } catch (error) {
       return {
         ok: false,
@@ -86,6 +92,23 @@ input {
   border-radius: 6px;
   font-size: 13px;
 }
+select {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid #aeb8c8;
+  border-radius: 6px;
+  color: #172033;
+  background: #ffffff;
+  font-size: 13px;
+}
+.response-picker {
+  display: none;
+  margin-top: 14px;
+}
+.response-picker.visible {
+  display: block;
+}
 button {
   margin-top: 14px;
   width: 100%;
@@ -128,6 +151,10 @@ button:disabled {
   <p>Create a public shared conversation link in ChatGPT, paste it here, and the app will import the conversation into the preview and clipboard.</p>
   <label for="url">Share URL</label>
   <input id="url" type="url" placeholder="https://chatgpt.com/share/..." autofocus>
+  <div id="response-picker" class="response-picker">
+    <label for="response">Export content</label>
+    <select id="response"></select>
+  </div>
   <button id="import">Import and copy formatted content</button>
   <div id="status" class="status">Ready.</div>
 </main>
@@ -135,6 +162,9 @@ button:disabled {
 const input = document.getElementById("url");
 const button = document.getElementById("import");
 const status = document.getElementById("status");
+const responsePicker = document.getElementById("response-picker");
+const response = document.getElementById("response");
+let lastImportedUrl = "";
 
 button.addEventListener("click", async () => {
   const url = input.value.trim();
@@ -148,9 +178,13 @@ button.addEventListener("click", async () => {
   status.className = "status";
   status.textContent = "Importing shared conversation...";
 
-  const result = await window.gptMathShareImport.importUrl(url);
+  const result = await window.gptMathShareImport.importUrl(url, response.value || undefined);
   status.className = result.ok ? "status ok" : "status error";
   status.textContent = result.message;
+  if (result.ok) {
+    lastImportedUrl = url;
+    updateResponseOptions(result.responseOptions || [], result.selectedResponseId || "all");
+  }
   button.disabled = false;
 });
 
@@ -159,6 +193,38 @@ input.addEventListener("keydown", (event) => {
     button.click();
   }
 });
+
+response.addEventListener("change", () => {
+  if (lastImportedUrl && !button.disabled) {
+    button.click();
+  }
+});
+
+function updateResponseOptions(options, selectedId) {
+  if (!options || options.length <= 1) {
+    responsePicker.className = "response-picker";
+    response.innerHTML = "";
+    return;
+  }
+
+  const previous = response.value || selectedId;
+  response.innerHTML = "";
+  options.forEach((option) => {
+    const item = document.createElement("option");
+    item.value = option.id;
+    item.textContent = option.label;
+    response.appendChild(item);
+  });
+  response.value = options.some((option) => option.id === selectedId)
+    ? selectedId
+    : options.some((option) => option.id === previous)
+    ? previous
+    : "all";
+  responsePicker.className = "response-picker visible";
+  button.textContent = response.value === "all"
+    ? "Import whole chat"
+    : "Import selected response";
+}
 </script>
 </body>
 </html>`;

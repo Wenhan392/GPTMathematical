@@ -396,6 +396,27 @@ class LatexParser {
       return `<m:rad><m:radPr><m:degHide m:val="1"/></m:radPr><m:deg/><m:e>${value}</m:e></m:rad>`;
     }
 
+    if (command === "boxed" || command === "fbox") {
+      const value = this.parseRequiredGroupOrAtom();
+      return `<m:borderBox><m:borderBoxPr><m:hideTop m:val="0"/><m:hideBot m:val="0"/><m:hideLeft m:val="0"/><m:hideRight m:val="0"/></m:borderBoxPr><m:e>${value}</m:e></m:borderBox>`;
+    }
+
+    if (command === "begin") {
+      const environment = this.groupText();
+      if (environment === "cases") {
+        return this.parseCasesEnvironment();
+      }
+      if (environment === "aligned" || environment === "gathered" || environment === "matrix" || environment === "pmatrix") {
+        return this.parseEquationArrayEnvironment(environment);
+      }
+      return "";
+    }
+
+    if (command === "end") {
+      this.discardOptionalGroup();
+      return "";
+    }
+
     if (command === "bar" || command === "overline") {
       const value = this.parseRequiredGroupOrAtom();
       return `<m:bar><m:barPr><m:pos m:val="top"/></m:barPr><m:e>${value}</m:e></m:bar>`;
@@ -504,6 +525,46 @@ class LatexParser {
     }
   }
 
+  private parseCasesEnvironment(): string {
+    const content = this.takeEnvironmentBody("cases");
+    const rows = splitEnvironmentRows(content).map((row) => {
+      const cells = splitEnvironmentCells(row);
+      return cells.map((cell) => new LatexParser(cell.trim()).parse()).join(mathRun("   "));
+    }).filter(Boolean);
+
+    return `<m:d><m:dPr><m:begChr m:val="{"/><m:endChr m:val=""/><m:grow m:val="1"/></m:dPr><m:e><m:eqArr>${rows.map((row) => `<m:e>${row}</m:e>`).join("")}</m:eqArr></m:e></m:d>`;
+  }
+
+  private parseEquationArrayEnvironment(environment: string): string {
+    const content = this.takeEnvironmentBody(environment);
+    const rows = splitEnvironmentRows(content).map((row) => {
+      const cells = splitEnvironmentCells(row);
+      return cells.map((cell) => new LatexParser(cell.trim()).parse()).join(mathRun("   "));
+    }).filter(Boolean);
+    const array = `<m:eqArr>${rows.map((row) => `<m:e>${row}</m:e>`).join("")}</m:eqArr>`;
+
+    if (environment === "pmatrix") {
+      return `<m:d><m:dPr><m:begChr m:val="("/><m:endChr m:val=")"/><m:grow m:val="1"/></m:dPr><m:e>${array}</m:e></m:d>`;
+    }
+
+    return array;
+  }
+
+  private takeEnvironmentBody(environment: string): string {
+    const endPattern = new RegExp(String.raw`\\end\s*\{\s*${environment}\s*\}`, "g");
+    endPattern.lastIndex = this.index;
+    const match = endPattern.exec(this.source);
+    if (!match) {
+      const rest = this.source.slice(this.index);
+      this.index = this.source.length;
+      return rest;
+    }
+
+    const body = this.source.slice(this.index, match.index);
+    this.index = match.index + match[0].length;
+    return body;
+  }
+
   private groupText(): string {
     this.skipSpaces();
     if (this.peek() !== "{") {
@@ -543,6 +604,20 @@ class LatexParser {
     }
     return this.source.slice(start, this.index);
   }
+}
+
+function splitEnvironmentRows(content: string): string[] {
+  return content
+    .split(/\\\\(?:\[[^\]]+\])?/)
+    .map((row) => row.trim())
+    .filter(Boolean);
+}
+
+function splitEnvironmentCells(row: string): string[] {
+  return row
+    .split(/(?<!\\)&/)
+    .map((cell) => cell.replace(/\\&/g, "&").trim())
+    .filter(Boolean);
 }
 
 function mathRun(text: string, style: "normal" | "italic" = "normal"): string {

@@ -158,4 +158,32 @@ describe("sharePayloadToMarkdown", () => {
     expect(result?.responseOptions.map((option) => option.id)).toEqual(["all", "assistant-1", "assistant-2"]);
     expect(result?.markdown).toBe("## GPT response 2\n\nSecond answer with \\(x_2\\).");
   });
+
+  it("removes ChatGPT file citation markers from imported messages", () => {
+    const payload = {
+      linear_conversation: [
+        {
+          message: {
+            author: { role: "assistant" },
+            content: {
+              parts: [
+                [
+                  "It includes the question paper and formula sheet. \uE200filecite\uE202turn0file0\uE201",
+                  "The second marker should go too. \uFFFDfilecite\uFFFDturn0File1\uFFFD"
+                ].join("\n")
+              ]
+            }
+          }
+        }
+      ]
+    };
+
+    const result = sharePayloadToMarkdown(payload);
+
+    expect(result?.markdown).toContain("It includes the question paper and formula sheet.");
+    expect(result?.markdown).toContain("The second marker should go too.");
+    expect(result?.markdown).not.toContain("filecite");
+    expect(result?.markdown).not.toContain("turn0file0");
+    expect(result?.markdown).not.toContain("turn0File1");
+  });
 });

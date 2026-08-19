@@ -1,6 +1,7 @@
 import { BrowserWindow } from "electron";
 import { convertToRichHtml } from "../conversion/convert";
 import { normalizeClipboardHtml, wrapClipboardHtml } from "../conversion/html";
+import { stripChatGptArtifacts } from "../shared/chatgptArtifacts";
 import type { AppSettings, ConversionResult } from "../shared/types";
 
 export interface ImportedShareConversation {
@@ -46,14 +47,16 @@ export async function importSharedConversation(url: string, settings: AppSetting
     };
   }
 
-  const html = normalizeClipboardHtml(extracted.domHtml || wrapClipboardHtml(`<pre>${escapeHtml(extracted.domText)}</pre>`, true));
+  const domText = stripChatGptArtifacts(extracted.domText);
+  const domHtml = stripChatGptArtifacts(extracted.domHtml);
+  const html = normalizeClipboardHtml(domHtml || wrapClipboardHtml(`<pre>${escapeHtml(domText)}</pre>`, true));
   return {
     title: extracted.title || "Imported ChatGPT conversation",
     url: parsedUrl,
     source: "rendered-dom",
     conversion: {
       html,
-      plainText: extracted.domText,
+      plainText: domText,
       warnings: ["Could not find embedded Markdown; used rendered page HTML instead."]
     },
     responseOptions: [{ id: "all", label: "Whole imported content" }],
@@ -337,7 +340,7 @@ export function chooseBestMarkdownCandidate(candidates: string[]): string | unde
 }
 
 function cleanCandidateText(text: string): string {
-  return text
+  return stripChatGptArtifacts(text)
     .replace(/\r\n/g, "\n")
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{4,}/g, "\n\n\n")

@@ -1,6 +1,7 @@
 import katex from "katex";
 import "katex/contrib/mhchem";
 import MarkdownIt from "markdown-it";
+import { stripChatGptArtifacts } from "../shared/chatgptArtifacts";
 import type { AppSettings, ConversionResult } from "../shared/types";
 import { escapeHtml, sanitizeMarkdownHtml, wrapClipboardHtml } from "./html";
 
@@ -34,8 +35,9 @@ export function convertToRichHtml(
   const mathTokens: MathToken[] = [];
   const diagramTokens: DiagramToken[] = [];
   const codeBlocks: string[] = [];
+  const cleanInput = stripChatGptArtifacts(input);
 
-  let prepared = input.replace(/```([a-zA-Z0-9_-]+)?[ \t]*\r?\n([\s\S]*?)```/g, (match, language = "", source = "") => {
+  let prepared = cleanInput.replace(/```([a-zA-Z0-9_-]+)?[ \t]*\r?\n([\s\S]*?)```/g, (match, language = "", source = "") => {
     if (settings.convertDiagrams && String(language).toLowerCase() === "mermaid") {
       const token = makeToken("DIAGRAM", diagramTokens.length);
       diagramTokens.push({ token, source: String(source).trim() });
@@ -66,7 +68,7 @@ export function convertToRichHtml(
 
   return {
     html: wrapClipboardHtml(body, options.includeCss ?? true),
-    plainText: input,
+    plainText: cleanInput,
     warnings
   };
 }

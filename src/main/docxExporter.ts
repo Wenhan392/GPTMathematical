@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
+import { stripChatGptArtifacts } from "../shared/chatgptArtifacts";
 
 export interface WordExportContent {
   title: string;
@@ -89,7 +90,7 @@ function buildDocumentXml(content: WordExportContent): string {
 }
 
 function markdownToWordBody(markdown: string): string {
-  const lines = normalizeMarkdownMath(markdown).split(/\r?\n/);
+  const lines = normalizeMarkdownMath(stripChatGptArtifacts(markdown)).split(/\r?\n/);
   const blocks: string[] = [];
 
   for (let index = 0; index < lines.length; index += 1) {

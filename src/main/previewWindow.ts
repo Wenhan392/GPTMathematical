@@ -9,6 +9,25 @@ export interface ClipboardPreviewContent {
   warnings: string[];
   canDownloadWord?: boolean;
   stabilizeRender?: boolean;
+  shareUrl?: string;
+  responseOptions?: ShareResponseOption[];
+  selectedResponseId?: string;
+}
+
+export interface ShareResponseOption {
+  id: string;
+  label: string;
+}
+
+export interface PreviewShareImportResult {
+  message: string;
+  responseOptions: ShareResponseOption[];
+  selectedResponseId: string;
+}
+
+export interface PreviewIpcHandlers {
+  downloadWord: () => Promise<string>;
+  importShare: (url: string, responseId?: string) => Promise<PreviewShareImportResult>;
 }
 
 export class ClipboardPreviewController {
@@ -54,15 +73,27 @@ export class ClipboardPreviewController {
   }
 }
 
-export function registerPreviewIpc(downloadWord: () => Promise<string>): void {
+export function registerPreviewIpc(handlers: PreviewIpcHandlers): void {
   ipcMain.handle("preview:download-word", async () => {
     try {
-      const message = await downloadWord();
+      const message = await handlers.downloadWord();
       return { ok: true, message };
     } catch (error) {
       return {
         ok: false,
         message: error instanceof Error ? error.message : "Could not save the Word document."
+      };
+    }
+  });
+
+  ipcMain.handle("preview:import-share", async (_event, url: string, responseId?: string) => {
+    try {
+      const result = await handlers.importShare(url, responseId);
+      return { ok: true, ...result };
+    } catch (error) {
+      return {
+        ok: false,
+        message: error instanceof Error ? error.message : "Could not import the shared conversation."
       };
     }
   });
@@ -75,6 +106,11 @@ function makePreviewUrl(content: ClipboardPreviewContent): string {
   const actions = '<button id="download-word" type="button">Download Word file</button><span id="download-status"></span>';
 
   const previewHtml = content.html || emptyPreviewHtml(content.plainText);
+  const previewState = scriptJson({
+    shareUrl: content.shareUrl ?? "",
+    responseOptions: content.responseOptions ?? [],
+    selectedResponseId: content.selectedResponseId ?? "all"
+  });
   const html = `
 <!doctype html>
 <html>
@@ -152,6 +188,63 @@ button:disabled {
   font-size: 12px;
   line-height: 1.4;
 }
+.import-panel {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, 260px) auto;
+  gap: 10px;
+  align-items: end;
+}
+.field {
+  min-width: 0;
+}
+label {
+  display: block;
+  margin-bottom: 5px;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+input,
+select {
+  box-sizing: border-box;
+  width: 100%;
+  height: 34px;
+  padding: 8px 10px;
+  border: 1px solid #b7c2d4;
+  border-radius: 6px;
+  color: #111827;
+  background: #ffffff;
+  font: 13px/1.2 "Segoe UI", Arial, sans-serif;
+}
+input:focus,
+select:focus {
+  outline: 3px solid #bfdbfe;
+  border-color: #2563eb;
+}
+.response-field {
+  display: none;
+}
+.response-field.visible {
+  display: block;
+}
+#import-share {
+  height: 34px;
+}
+#import-status {
+  grid-column: 1 / -1;
+  min-height: 16px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.35;
+}
+#import-status.error {
+  color: #991b1b;
+}
+#import-status.ok {
+  color: #166534;
+}
 main {
   padding: 16px 20px 20px;
   display: grid;
@@ -221,6 +314,18 @@ pre {
     <div class="actions">${actions}</div>
   </div>
   <div class="status">${escapeHtml(content.status)}</div>
+  <div class="import-panel">
+    <div class="field">
+      <label for="share-url">ChatGPT share link</label>
+      <input id="share-url" type="url" placeholder="https://chatgpt.com/share/...">
+    </div>
+    <div id="response-field" class="field response-field">
+      <label for="share-response">Export content</label>
+      <select id="share-response"></select>
+    </div>
+    <button id="import-share" type="button">Import</button>
+    <div id="import-status">Import a ChatGPT share link here, or keep using this window as your clipboard preview.</div>
+  </div>
   ${warnings}
 </header>
 <main>
@@ -234,16 +339,95 @@ pre {
   </section>
 </main>
 <script>
-const button = document.getElementById("download-word");
-const status = document.getElementById("download-status");
-if (button && status) {
-  button.addEventListener("click", async () => {
-    button.disabled = true;
-    status.textContent = "Saving...";
+const previewState = ${previewState};
+const downloadButton = document.getElementById("download-word");
+const downloadStatus = document.getElementById("download-status");
+const shareUrl = document.getElementById("share-url");
+const importButton = document.getElementById("import-share");
+const importStatus = document.getElementById("import-status");
+const responseField = document.getElementById("response-field");
+const responseSelect = document.getElementById("share-response");
+let lastImportedUrl = previewState.shareUrl || "";
+
+if (shareUrl) {
+  shareUrl.value = previewState.shareUrl || "";
+}
+updateResponseOptions(previewState.responseOptions || [], previewState.selectedResponseId || "all");
+
+if (downloadButton && downloadStatus) {
+  downloadButton.addEventListener("click", async () => {
+    downloadButton.disabled = true;
+    downloadStatus.textContent = "Saving...";
     const result = await window.gptMathPreview.downloadWord();
-    status.textContent = result.message;
-    button.disabled = false;
+    downloadStatus.textContent = result.message;
+    downloadButton.disabled = false;
   });
+}
+if (importButton && importStatus && shareUrl) {
+  importButton.addEventListener("click", async () => {
+    const url = shareUrl.value.trim();
+    if (!url) {
+      importStatus.className = "error";
+      importStatus.textContent = "Paste a ChatGPT shared conversation URL first.";
+      return;
+    }
+
+    importButton.disabled = true;
+    importStatus.className = "";
+    importStatus.textContent = "Importing shared conversation...";
+
+    const result = await window.gptMathPreview.importShare(url, responseSelect?.value || undefined);
+    importStatus.className = result.ok ? "ok" : "error";
+    importStatus.textContent = result.message;
+    importButton.disabled = false;
+
+    if (result.ok) {
+      lastImportedUrl = url;
+      updateResponseOptions(result.responseOptions || [], result.selectedResponseId || "all");
+    }
+  });
+
+  shareUrl.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      importButton.click();
+    }
+  });
+}
+if (responseSelect) {
+  responseSelect.addEventListener("change", () => {
+    if (lastImportedUrl && !importButton?.disabled) {
+      importButton?.click();
+    }
+  });
+}
+
+function updateResponseOptions(options, selectedId) {
+  if (!responseField || !responseSelect || !importButton) {
+    return;
+  }
+
+  if (!options || options.length <= 1) {
+    responseField.className = "field response-field";
+    responseSelect.innerHTML = "";
+    importButton.textContent = "Import";
+    return;
+  }
+
+  const previous = responseSelect.value || selectedId;
+  responseSelect.innerHTML = "";
+  options.forEach((option) => {
+    const item = document.createElement("option");
+    item.value = option.id;
+    item.textContent = option.label;
+    responseSelect.appendChild(item);
+  });
+  responseSelect.value = options.some((option) => option.id === selectedId)
+    ? selectedId
+    : options.some((option) => option.id === previous)
+    ? previous
+    : "all";
+  responseField.className = "field response-field visible";
+  importButton.textContent = responseSelect.value === "all" ? "Import whole chat" : "Import selected response";
 }
 </script>
 </body>
@@ -273,4 +457,8 @@ function escapeHtml(value: string): string {
 
 function escapeAttribute(value: string): string {
   return escapeHtml(value).replace(/`/g, "&#96;");
+}
+
+function scriptJson(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
 }

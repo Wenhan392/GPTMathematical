@@ -6,7 +6,6 @@ import { suggestDocxFilename, writeWordDocument, type WordExportContent } from "
 import { importSharedConversation } from "./shareImporter";
 import { ClipboardPreviewController, registerPreviewIpc, type ClipboardPreviewContent } from "./previewWindow";
 import { SettingsStore } from "./settings";
-import { openShareImportWindow, registerShareImportIpc } from "./shareImportWindow";
 import { openSettingsWindow, registerSettingsIpc } from "./settingsWindow";
 import { ToastController } from "./toastWindow";
 import { AppTray } from "./tray";
@@ -44,26 +43,7 @@ app.whenReady().then(() => {
     preview: (content) => showPreview(preview, content)
   });
 
-  registerSettingsIpc(settingsStore, () => tray?.refresh());
-  registerPreviewIpc(async () => {
-    if (!latestWordExport) {
-      throw new Error("Import a ChatGPT shared conversation before downloading a Word file.");
-    }
-
-    const result = await dialog.showSaveDialog({
-      title: "Save Word Document",
-      defaultPath: suggestDocxFilename(latestWordExport.title),
-      filters: [{ name: "Word Document", extensions: ["docx"] }]
-    });
-
-    if (result.canceled || !result.filePath) {
-      return "Save canceled.";
-    }
-
-    writeWordDocument(result.filePath, latestWordExport);
-    return `Saved Word file: ${result.filePath}`;
-  });
-  registerShareImportIpc(async (url, responseId) => {
+  const importShareIntoPreview = async (url: string, responseId?: string) => {
     const imported = await importSharedConversationStable(url, settingsStore.get(), responseId);
     clipboard.write({
       text: imported.conversion.plainText,
@@ -77,7 +57,10 @@ app.whenReady().then(() => {
       plainText: imported.conversion.plainText,
       warnings: imported.conversion.warnings,
       canDownloadWord: true,
-      stabilizeRender: true
+      stabilizeRender: true,
+      shareUrl: url,
+      responseOptions: imported.responseOptions,
+      selectedResponseId: imported.selectedResponseId
     });
     notify("Imported shared conversation.", "success");
     return {
@@ -85,6 +68,29 @@ app.whenReady().then(() => {
       responseOptions: imported.responseOptions,
       selectedResponseId: imported.selectedResponseId
     };
+  };
+
+  registerSettingsIpc(settingsStore, () => tray?.refresh());
+  registerPreviewIpc({
+    downloadWord: async () => {
+      if (!latestWordExport) {
+        throw new Error("Import a ChatGPT shared conversation before downloading a Word file.");
+      }
+
+      const result = await dialog.showSaveDialog({
+        title: "Save Word Document",
+        defaultPath: suggestDocxFilename(latestWordExport.title),
+        filters: [{ name: "Word Document", extensions: ["docx"] }]
+      });
+
+      if (result.canceled || !result.filePath) {
+        return "Save canceled.";
+      }
+
+      writeWordDocument(result.filePath, latestWordExport);
+      return `Saved Word file: ${result.filePath}`;
+    },
+    importShare: importShareIntoPreview
   });
 
   tray = new AppTray(settingsStore, {
@@ -94,7 +100,9 @@ app.whenReady().then(() => {
     previewClipboard: () => {
       showClipboardPreview(preview, settingsStore);
     },
-    importShareLink: openShareImportWindow,
+    importShareLink: () => {
+      showImportWorkspace(preview);
+    },
     openSettings: openSettingsWindow
   });
 
@@ -214,6 +222,19 @@ function showClipboardPreview(preview: ClipboardPreviewController, settingsStore
     title: "Clipboard preview",
     status: detection.reason,
     html: text.trim() ? convertToRichHtml(text, settingsStore.get()).html : "",
+    plainText: text,
+    warnings: []
+  });
+}
+
+function showImportWorkspace(preview: ClipboardPreviewController): void {
+  const text = clipboard.readText();
+  const html = clipboard.readHTML();
+
+  showPreview(preview, {
+    title: "Clipboard workspace",
+    status: "Import a ChatGPT share link here, or preview the current clipboard.",
+    html,
     plainText: text,
     warnings: []
   });

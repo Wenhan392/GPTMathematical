@@ -248,6 +248,19 @@ function parseInlineMarkdown(input: string): InlineToken[] {
       tokens.push({ kind: "text", value: decodeInlineHtml(value), ...style });
     }
   };
+  const pushStyledTokens = (value: string, style: Pick<InlineToken & { kind: "text" }, "bold" | "italic">) => {
+    for (const token of parseInlineMarkdown(value)) {
+      if (token.kind === "math") {
+        tokens.push(token);
+      } else {
+        tokens.push({
+          ...token,
+          bold: style.bold || token.bold,
+          italic: style.italic || token.italic
+        });
+      }
+    }
+  };
 
   while (index < input.length) {
     const rest = input.slice(index);
@@ -260,14 +273,14 @@ function parseInlineMarkdown(input: string): InlineToken[] {
 
     const bold = rest.match(/^\*\*([\s\S]+?)\*\*/);
     if (bold) {
-      pushText(bold[1], { bold: true });
+      pushStyledTokens(bold[1], { bold: true });
       index += bold[0].length;
       continue;
     }
 
     const italic = rest.match(/^\*([^*\n]+?)\*/);
     if (italic) {
-      pushText(italic[1], { italic: true });
+      pushStyledTokens(italic[1], { italic: true });
       index += italic[0].length;
       continue;
     }

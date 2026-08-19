@@ -94,6 +94,22 @@ describe("docxExporter", () => {
     expect(documentXml).not.toContain(">cases<");
     expect(documentXml).not.toContain(">end<");
   });
+
+  it("exports inline math inside bold text as equations", () => {
+    const buffer = createWordDocumentBuffer({
+      title: "Angular momentum",
+      html: "",
+      plainText: "Great question. The reason is that **\\(L = \\omega\\) and \\(L = mrv\\)** are the same equation."
+    });
+
+    const documentXml = readZipEntry(buffer, "word/document.xml");
+    expect(documentXml).toContain("<m:oMath>");
+    expect(documentXml).toContain("ω");
+    expect(documentXml).toContain("mrv");
+    expect(documentXml).not.toContain("\\(");
+    expect(documentXml).not.toContain("\\omega");
+    expect(documentXml).not.toContain("\\)");
+  });
 });
 
 function readZipEntry(buffer: Buffer, entryName: string): string {

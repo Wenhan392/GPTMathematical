@@ -178,13 +178,9 @@ button.addEventListener("click", async () => {
   status.className = "status";
   status.textContent = "Importing shared conversation...";
 
-  const result = await window.gptMathShareImport.importUrl(url, response.value || undefined);
+  const result = await runSettledImport(url, response.value || undefined);
   status.className = result.ok ? "status ok" : "status error";
   status.textContent = result.message;
-  if (result.ok) {
-    lastImportedUrl = url;
-    updateResponseOptions(result.responseOptions || [], result.selectedResponseId || "all");
-  }
   button.disabled = false;
 });
 
@@ -199,6 +195,29 @@ response.addEventListener("change", () => {
     button.click();
   }
 });
+
+async function runSettledImport(url, selectedId) {
+  const first = await window.gptMathShareImport.importUrl(url, selectedId);
+  if (!first.ok) {
+    return first;
+  }
+
+  lastImportedUrl = url;
+  updateResponseOptions(first.responseOptions || [], first.selectedResponseId || "all");
+
+  status.className = "status";
+  status.textContent = "Finalizing formatted preview...";
+  await new Promise((resolve) => setTimeout(resolve, 220));
+
+  const second = await window.gptMathShareImport.importUrl(url, response.value || first.selectedResponseId || selectedId);
+  if (!second.ok) {
+    return first;
+  }
+
+  lastImportedUrl = url;
+  updateResponseOptions(second.responseOptions || [], second.selectedResponseId || "all");
+  return second;
+}
 
 function updateResponseOptions(options, selectedId) {
   if (!options || options.length <= 1) {

@@ -21,6 +21,31 @@ npm test
 
 Open `marketing/index.html` in a browser to view the static sales website for the app.
 
+## Launch web app
+
+The production launch site and account/payment portal now live in `web/`.
+
+```powershell
+cd web
+npm install
+Copy-Item .env.example .env.local
+npm run dev
+```
+
+Use Supabase SQL from `web/supabase/schema.sql`, configure Stripe Checkout price IDs and webhook secrets in Vercel, then deploy with `web/` as the Vercel project root.
+
+## Local test activation
+
+For development only, the desktop app can unlock with an ignored `.env.local` file in the repo root:
+
+```powershell
+GPT_MATH_ENABLE_LOCAL_TEST_LICENSE=true
+GPT_MATH_TEST_LICENSE_EMAIL=admin-test@gptmathematical.local
+GPT_MATH_TEST_LICENSE_KEY=GPTM-TEST-...
+```
+
+When this flag is not set, activation must go through the configured license API.
+
 ## v1 Notes
 
 - Everything runs locally.

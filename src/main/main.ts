@@ -10,6 +10,8 @@ import { SettingsStore } from "./settings";
 import { openSettingsWindow, registerSettingsIpc } from "./settingsWindow";
 import { ToastController } from "./toastWindow";
 import { AppTray } from "./tray";
+import { LicenseStore } from "./licenseStore";
+import { showActivationWindow } from "./activationWindow";
 
 let tray: AppTray | undefined;
 let pollTimer: NodeJS.Timeout | undefined;
@@ -28,7 +30,13 @@ app.on("second-instance", () => {
   openSettingsWindow();
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  const licenseStore = new LicenseStore();
+  const licenseStatus = await licenseStore.validateCachedLicense();
+  if (!licenseStatus.usable) {
+    await showActivationWindow(licenseStore);
+  }
+
   const settingsStore = new SettingsStore();
   const toast = new ToastController();
   const preview = new ClipboardPreviewController();

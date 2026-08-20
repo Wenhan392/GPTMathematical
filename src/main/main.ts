@@ -14,6 +14,8 @@ import { AppTray } from "./tray";
 let tray: AppTray | undefined;
 let pollTimer: NodeJS.Timeout | undefined;
 let latestWordExport: WordExportContent | undefined;
+let autoShareImportInFlight = false;
+let lastAutoShareImportText = "";
 
 app.setName("GPT Mathematical");
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
@@ -131,7 +133,7 @@ app.whenReady().then(() => {
   });
 
   pollTimer = setInterval(() => {
-    void processor.poll();
+    void pollClipboard(processor, settingsStore, importShareIntoPreview, notify);
   }, 750);
 
   notify("Running in the tray.", "info");
@@ -177,6 +179,62 @@ function scoreImportedPlainText(text: string): number {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function pollClipboard(
+  processor: ClipboardProcessor,
+  settingsStore: SettingsStore,
+  importShareIntoPreview: (url: string, responseId?: string) => Promise<{ message: string }>,
+  notify: (message: string, variant?: "success" | "error" | "info") => void
+): Promise<void> {
+  const settings = settingsStore.get();
+  const text = clipboard.readText();
+  const shareUrl = extractChatGptShareUrl(text);
+
+  if (!settings.enabled) {
+    lastAutoShareImportText = "";
+    await processor.poll();
+    return;
+  }
+
+  if (!shareUrl) {
+    lastAutoShareImportText = "";
+    await processor.poll();
+    return;
+  }
+
+  if (autoShareImportInFlight || text === lastAutoShareImportText) {
+    return;
+  }
+
+  autoShareImportInFlight = true;
+  lastAutoShareImportText = text;
+  try {
+    notify("ChatGPT share link detected. Importing conversation...", "info");
+    await importShareIntoPreview(shareUrl);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not import the copied ChatGPT share link.";
+    notify(message, "error");
+  } finally {
+    autoShareImportInFlight = false;
+  }
+}
+
+function extractChatGptShareUrl(text: string): string | undefined {
+  const match = text.match(/https?:\/\/(?:chatgpt\.com|chat\.openai\.com)\/share\/[^\s<>"')]+/i);
+  if (!match) {
+    return undefined;
+  }
+
+  try {
+    const parsed = new URL(match[0].replace(/[.,;:]+$/, ""));
+    if (!/(^|\.)chatgpt\.com$|(^|\.)chat\.openai\.com$/.test(parsed.hostname)) {
+      return undefined;
+    }
+    return parsed.toString();
+  } catch {
+    return undefined;
+  }
 }
 
 function shareImportStatus(source: "share-api" | "embedded-markdown" | "rendered-dom"): string {

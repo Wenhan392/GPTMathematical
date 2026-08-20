@@ -4,6 +4,9 @@ contextBridge.exposeInMainWorld("gptMathPreview", {
   downloadWord: async (): Promise<{ ok: boolean; message: string }> => {
     return await ipcRenderer.invoke("preview:download-word");
   },
+  downloadPdf: async (): Promise<{ ok: boolean; message: string }> => {
+    return await ipcRenderer.invoke("preview:download-pdf");
+  },
   importShare: async (
     url: string,
     responseId?: string

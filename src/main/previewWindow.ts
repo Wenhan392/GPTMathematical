@@ -27,6 +27,7 @@ export interface PreviewShareImportResult {
 
 export interface PreviewIpcHandlers {
   downloadWord: () => Promise<string>;
+  downloadPdf: () => Promise<string>;
   importShare: (url: string, responseId?: string) => Promise<PreviewShareImportResult>;
 }
 
@@ -86,6 +87,18 @@ export function registerPreviewIpc(handlers: PreviewIpcHandlers): void {
     }
   });
 
+  ipcMain.handle("preview:download-pdf", async () => {
+    try {
+      const message = await handlers.downloadPdf();
+      return { ok: true, message };
+    } catch (error) {
+      return {
+        ok: false,
+        message: error instanceof Error ? error.message : "Could not save the PDF document."
+      };
+    }
+  });
+
   ipcMain.handle("preview:import-share", async (_event, url: string, responseId?: string) => {
     try {
       const result = await handlers.importShare(url, responseId);
@@ -104,7 +117,11 @@ function makePreviewUrl(content: ClipboardPreviewContent): string {
     ? `<div class="warnings">${content.warnings.map((warning) => `<div>${escapeHtml(warning)}</div>`).join("")}</div>`
     : "";
   const canDownloadWord = content.canDownloadWord !== false;
-  const actions = `<button class="secondary-button" id="download-word" type="button"${canDownloadWord ? "" : " disabled"}>Download Word file</button><span id="download-status">${canDownloadWord ? "" : "Select a smaller import to export Word."}</span>`;
+  const actions = [
+    `<button class="secondary-button" id="download-word" type="button"${canDownloadWord ? "" : " disabled"}>Download Word file</button>`,
+    `<button class="secondary-button" id="download-pdf" type="button"${canDownloadWord ? "" : " disabled"}>Download PDF file</button>`,
+    `<span id="download-status">${canDownloadWord ? "" : "Select a smaller import to export."}</span>`
+  ].join("");
 
   const previewHtml = content.html || emptyPreviewHtml(content.plainText);
   const previewState = scriptJson({
@@ -421,6 +438,7 @@ pre {
 <script>
 const previewState = ${previewState};
 const downloadButton = document.getElementById("download-word");
+const pdfButton = document.getElementById("download-pdf");
 const downloadStatus = document.getElementById("download-status");
 const shareUrl = document.getElementById("share-url");
 const importButton = document.getElementById("import-share");
@@ -437,10 +455,23 @@ updateResponseOptions(previewState.responseOptions || [], previewState.selectedR
 if (downloadButton && downloadStatus) {
   downloadButton.addEventListener("click", async () => {
     downloadButton.disabled = true;
+    if (pdfButton) pdfButton.disabled = true;
     downloadStatus.textContent = "Saving...";
     const result = await window.gptMathPreview.downloadWord();
     downloadStatus.textContent = result.message;
     downloadButton.disabled = false;
+    if (pdfButton) pdfButton.disabled = false;
+  });
+}
+if (pdfButton && downloadStatus) {
+  pdfButton.addEventListener("click", async () => {
+    pdfButton.disabled = true;
+    if (downloadButton) downloadButton.disabled = true;
+    downloadStatus.textContent = "Saving PDF...";
+    const result = await window.gptMathPreview.downloadPdf();
+    downloadStatus.textContent = result.message;
+    pdfButton.disabled = false;
+    if (downloadButton) downloadButton.disabled = false;
   });
 }
 if (importButton && importStatus && shareUrl) {

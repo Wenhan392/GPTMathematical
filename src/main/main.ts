@@ -3,6 +3,7 @@ import { ClipboardProcessor, electronClipboardPort } from "./clipboardProcessor"
 import { convertToRichHtml } from "../conversion/convert";
 import { detectConvertibleContent } from "../conversion/detect";
 import { suggestDocxFilename, writeWordDocument, type WordExportContent } from "./docxExporter";
+import { suggestPdfFilename, writePdfDocument } from "./pdfExporter";
 import { importSharedConversation } from "./shareImporter";
 import { ClipboardPreviewController, registerPreviewIpc, type ClipboardPreviewContent } from "./previewWindow";
 import { SettingsStore } from "./settings";
@@ -94,6 +95,24 @@ app.whenReady().then(() => {
 
       writeWordDocument(result.filePath, latestWordExport);
       return `Saved Word file: ${result.filePath}`;
+    },
+    downloadPdf: async () => {
+      if (!latestWordExport) {
+        throw new Error("Import a ChatGPT shared conversation before downloading a PDF file.");
+      }
+
+      const result = await dialog.showSaveDialog({
+        title: "Save PDF Document",
+        defaultPath: suggestPdfFilename(latestWordExport.title),
+        filters: [{ name: "PDF Document", extensions: ["pdf"] }]
+      });
+
+      if (result.canceled || !result.filePath) {
+        return "Save canceled.";
+      }
+
+      await writePdfDocument(result.filePath, latestWordExport);
+      return `Saved PDF file: ${result.filePath}`;
     },
     importShare: importShareIntoPreview
   });

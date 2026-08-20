@@ -1,0 +1,33 @@
+{
+  "name": "gpt-mathematical-clipboard-overlay",
+  "version": "0.1.0",
+  "description": "Windows desktop clipboard overlay that converts ChatGPT math and Markdown into paste-friendly rich content.",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "npm run build && electron .",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "keywords": [
+    "electron",
+    "clipboard",
+    "latex",
+    "markdown",
+    "math"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "katex": "^0.16.11",
+    "markdown-it": "^14.1.0"
+  },
+  "devDependencies": {
+    "@types/katex": "^0.16.7",
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^22.10.2",
+    "electron": "^33.2.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

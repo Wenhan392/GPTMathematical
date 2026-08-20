@@ -52,19 +52,24 @@ app.whenReady().then(() => {
     processor.markClipboardAsAppWritten(imported.conversion.plainText, imported.conversion.html);
     showPreview(preview, {
       title: imported.title,
-      status: shareImportStatus(imported.source),
+      status: imported.canDownloadWord === false ? oversizedImportStatus() : shareImportStatus(imported.source),
       html: imported.conversion.html,
       plainText: imported.conversion.plainText,
       warnings: imported.conversion.warnings,
-      canDownloadWord: true,
+      canDownloadWord: imported.canDownloadWord !== false,
       stabilizeRender: true,
       shareUrl: url,
       responseOptions: imported.responseOptions,
       selectedResponseId: imported.selectedResponseId
     });
-    notify("Imported shared conversation.", "success");
+    notify(
+      imported.canDownloadWord === false ? "Imported chat is too large to format all at once." : "Imported shared conversation.",
+      imported.canDownloadWord === false ? "error" : "success"
+    );
     return {
-      message: shareImportResultMessage(imported.source, imported.selectedResponseId),
+      message: imported.canDownloadWord === false
+        ? oversizedImportResultMessage(imported.selectedResponseId)
+        : shareImportResultMessage(imported.source, imported.selectedResponseId),
       responseOptions: imported.responseOptions,
       selectedResponseId: imported.selectedResponseId
     };
@@ -119,6 +124,9 @@ async function importSharedConversationStable(
   responseId?: string
 ): Promise<Awaited<ReturnType<typeof importSharedConversation>>> {
   const first = await importSharedConversation(url, settings, responseId);
+  if (first.canDownloadWord === false) {
+    return first;
+  }
 
   try {
     await delay(180);
@@ -164,6 +172,10 @@ function shareImportStatus(source: "share-api" | "embedded-markdown" | "rendered
   return "Imported rendered shared-page HTML and copied formatted content to the clipboard.";
 }
 
+function oversizedImportStatus(): string {
+  return "This import is too large to format safely, so the clipboard contains an error message instead. Select a smaller GPT response to import just that answer.";
+}
+
 function shareImportResultMessage(source: "share-api" | "embedded-markdown" | "rendered-dom", selectedResponseId = "all"): string {
   const scope = selectedResponseId === "all" ? "content" : "selected response";
 
@@ -178,21 +190,57 @@ function shareImportResultMessage(source: "share-api" | "embedded-markdown" | "r
   return "Imported rendered page HTML, opened preview, and copied formatted content.";
 }
 
+function oversizedImportResultMessage(selectedResponseId = "all"): string {
+  if (selectedResponseId === "all") {
+    return "Whole chat is too large to format safely. Select a specific GPT response and import again.";
+  }
+
+  return "Selected response is too large to format safely. Choose a smaller response or raise the clipboard size limit.";
+}
+
 function showPreview(preview: ClipboardPreviewController, content: ClipboardPreviewContent): void {
-  latestWordExport = {
-    title: content.title,
-    html: content.html,
-    plainText: content.plainText
-  };
+  if (content.canDownloadWord === false) {
+    latestWordExport = undefined;
+  } else {
+    latestWordExport = {
+      title: content.title,
+      html: content.html,
+      plainText: content.plainText
+    };
+  }
   preview.show({
     ...content,
-    canDownloadWord: true
+    canDownloadWord: content.canDownloadWord !== false
   });
 }
 
 function showClipboardPreview(preview: ClipboardPreviewController, settingsStore: SettingsStore): void {
   const text = clipboard.readText();
   const html = clipboard.readHTML();
+  const settings = settingsStore.get();
+  const clipboardChars = Math.max(text.length, html.length);
+
+  if (clipboardChars > settings.maxClipboardChars) {
+    const message = [
+      "Clipboard content is too large to preview safely.",
+      "",
+      `Detected size: ${clipboardChars.toLocaleString()} characters.`,
+      `Current limit: ${settings.maxClipboardChars.toLocaleString()} characters.`,
+      "",
+      "For ChatGPT shared conversations, import the link and select a smaller GPT response."
+    ].join("\n");
+    const conversion = convertToRichHtml(message, settings);
+    showPreview(preview, {
+      title: "Clipboard preview",
+      status: "Clipboard content is too large, so rich preview conversion was skipped.",
+      html: conversion.html,
+      plainText: conversion.plainText,
+      warnings: [`Over ${settings.maxClipboardChars.toLocaleString()} character limit.`],
+      canDownloadWord: false
+    });
+    return;
+  }
+
   const detection = detectConvertibleContent(text);
 
   if (html) {
@@ -206,8 +254,8 @@ function showClipboardPreview(preview: ClipboardPreviewController, settingsStore
     return;
   }
 
-  if (detection.shouldConvert && text.length <= settingsStore.get().maxClipboardChars) {
-    const conversion = convertToRichHtml(text, settingsStore.get());
+  if (detection.shouldConvert && text.length <= settings.maxClipboardChars) {
+    const conversion = convertToRichHtml(text, settings);
     showPreview(preview, {
       title: "Clipboard preview",
       status: "This is how the current plain text would look after conversion.",
@@ -220,10 +268,14 @@ function showClipboardPreview(preview: ClipboardPreviewController, settingsStore
 
   showPreview(preview, {
     title: "Clipboard preview",
-    status: detection.reason,
-    html: text.trim() ? convertToRichHtml(text, settingsStore.get()).html : "",
+    status: text.length > settings.maxClipboardChars
+      ? `Clipboard content is over ${settings.maxClipboardChars.toLocaleString()} characters, so preview conversion was skipped.`
+      : detection.reason,
+    html: text.trim() && text.length <= settings.maxClipboardChars ? convertToRichHtml(text, settings).html : "",
     plainText: text,
-    warnings: []
+    warnings: text.length > settings.maxClipboardChars
+      ? [`Over ${settings.maxClipboardChars.toLocaleString()} character limit.`]
+      : []
   });
 }
 

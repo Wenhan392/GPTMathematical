@@ -159,6 +159,44 @@ describe("sharePayloadToMarkdown", () => {
     expect(result?.markdown).toBe("## GPT response 2\n\nSecond answer with \\(x_2\\).");
   });
 
+  it("skips oversized whole-chat Markdown while preserving selectable responses", () => {
+    const largeAnswer = "Large answer paragraph. ".repeat(120);
+    const payload = {
+      linear_conversation: [
+        {
+          message: {
+            id: "user-1",
+            author: { role: "user" },
+            content: { parts: ["Question"] }
+          }
+        },
+        {
+          message: {
+            id: "assistant-1",
+            author: { role: "assistant" },
+            content: { parts: [largeAnswer] }
+          }
+        },
+        {
+          message: {
+            id: "assistant-2",
+            author: { role: "assistant" },
+            content: { parts: ["Small answer with \\(x_2\\)."] }
+          }
+        }
+      ]
+    };
+
+    const wholeChat = sharePayloadToMarkdown(payload, "all", 300);
+    const selected = sharePayloadToMarkdown(payload, "assistant-2", 300);
+
+    expect(wholeChat?.oversized?.scope).toBe("whole chat");
+    expect(wholeChat?.markdown).toBe("");
+    expect(wholeChat?.responseOptions.map((option) => option.id)).toEqual(["all", "assistant-1", "assistant-2"]);
+    expect(selected?.oversized).toBeUndefined();
+    expect(selected?.markdown).toBe("## GPT response 2\n\nSmall answer with \\(x_2\\).");
+  });
+
   it("removes ChatGPT file citation markers from imported messages", () => {
     const payload = {
       linear_conversation: [

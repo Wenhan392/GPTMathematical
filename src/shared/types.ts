@@ -38,10 +38,12 @@ export interface AppSettings {
   convertDiagrams: boolean;
 }
 
+export const maxSafeFormatChars = 300_000;
+
 export const defaultSettings: AppSettings = {
   enabled: true,
   showToasts: true,
   showPreviewOnConvert: true,
-  maxClipboardChars: 120_000,
+  maxClipboardChars: 250_000,
   convertDiagrams: true
 };

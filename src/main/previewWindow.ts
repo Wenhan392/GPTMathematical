@@ -103,7 +103,8 @@ function makePreviewUrl(content: ClipboardPreviewContent): string {
   const warnings = content.warnings.length
     ? `<div class="warnings">${content.warnings.map((warning) => `<div>${escapeHtml(warning)}</div>`).join("")}</div>`
     : "";
-  const actions = '<button class="secondary-button" id="download-word" type="button">Download Word file</button><span id="download-status"></span>';
+  const canDownloadWord = content.canDownloadWord !== false;
+  const actions = `<button class="secondary-button" id="download-word" type="button"${canDownloadWord ? "" : " disabled"}>Download Word file</button><span id="download-status">${canDownloadWord ? "" : "Select a smaller import to export Word."}</span>`;
 
   const previewHtml = content.html || emptyPreviewHtml(content.plainText);
   const previewState = scriptJson({

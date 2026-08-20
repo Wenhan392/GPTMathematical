@@ -262,7 +262,7 @@ button:hover {
           <div class="label">Clipboard size limit</div>
           <div class="hint">Character limit before conversion is skipped.</div>
         </div>
-        <input id="maxClipboardChars" type="number" min="1000" max="1000000" step="1000">
+        <input id="maxClipboardChars" type="number" min="1000" max="300000" step="1000">
       </div>
     </div>
     <div class="footer">

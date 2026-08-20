@@ -79,7 +79,11 @@ describe("docxExporter", () => {
       plainText: [
         "\\[",
         "\\boxed{x = \\begin{cases} a^2 & \\text{if } a > 0 \\\\ b_1 & \\text{otherwise} \\end{cases}}",
-        "\\]"
+        "\\]",
+        "",
+        "$$",
+        "\\boxed{q = \\begin{bmatrix} \\phi\\\\ r\\\\ x \\end{bmatrix}}",
+        "$$"
       ].join("\n")
     });
 
@@ -92,7 +96,9 @@ describe("docxExporter", () => {
     expect(documentXml).not.toContain(">boxed<");
     expect(documentXml).not.toContain(">begin<");
     expect(documentXml).not.toContain(">cases<");
+    expect(documentXml).not.toContain(">bmatrix<");
     expect(documentXml).not.toContain(">end<");
+    expect(documentXml).not.toContain("$$");
   });
 
   it("exports inline math inside bold text as equations", () => {

@@ -181,7 +181,7 @@ function normalizeMarkdownMath(markdown: string): string {
   return markdown
     .replace(/\\\[/g, "\n\\[\n")
     .replace(/\\\]/g, "\n\\]\n")
-    .replace(/\$\$/g, "\n$$\n")
+    .replace(/\$\$/g, () => "\n$$\n")
     .replace(/\n{3,}/g, "\n\n");
 }
 
@@ -495,7 +495,7 @@ class LatexParser {
       if (environment === "cases") {
         return this.parseCasesEnvironment();
       }
-      if (environment === "aligned" || environment === "gathered" || environment === "matrix" || environment === "pmatrix") {
+      if (environment === "aligned" || environment === "gathered" || environment === "matrix" || environment === "pmatrix" || environment === "bmatrix") {
         return this.parseEquationArrayEnvironment(environment);
       }
       return "";
@@ -634,6 +634,10 @@ class LatexParser {
 
     if (environment === "pmatrix") {
       return `<m:d><m:dPr><m:begChr m:val="("/><m:endChr m:val=")"/><m:grow m:val="1"/></m:dPr><m:e>${array}</m:e></m:d>`;
+    }
+
+    if (environment === "bmatrix") {
+      return `<m:d><m:dPr><m:begChr m:val="["/><m:endChr m:val="]"/><m:grow m:val="1"/></m:dPr><m:e>${array}</m:e></m:d>`;
     }
 
     return array;

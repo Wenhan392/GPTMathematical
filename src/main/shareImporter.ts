@@ -11,11 +11,26 @@ export interface ImportedShareConversation {
   conversion: ConversionResult;
   responseOptions: ShareResponseOption[];
   selectedResponseId: string;
+  canDownloadWord?: boolean;
 }
 
 export interface ShareResponseOption {
   id: string;
   label: string;
+}
+
+export interface SharePayloadMarkdownResult {
+  title: string;
+  markdown: string;
+  responseOptions: ShareResponseOption[];
+  selectedResponseId: string;
+  oversized?: OversizedImportDetails;
+}
+
+interface OversizedImportDetails {
+  scope: "whole chat" | "selected response" | "imported content";
+  estimatedChars: number;
+  maxChars: number;
 }
 
 interface ExtractedShareContent {
@@ -24,6 +39,7 @@ interface ExtractedShareContent {
   domHtml: string;
   domText: string;
   domMarkdownText: string;
+  domMessages: ShareMessageMarkdown[];
 }
 
 export async function importSharedConversation(url: string, settings: AppSettings, responseId = "all"): Promise<ImportedShareConversation> {
@@ -34,9 +50,57 @@ export async function importSharedConversation(url: string, settings: AppSetting
   }
 
   const extracted = await extractSharedPage(parsedUrl);
+  if (extracted.domMessages.length > 0) {
+    const parsed = shareMessagesToMarkdown(
+      extracted.title || "Imported ChatGPT conversation",
+      extracted.domMessages,
+      responseId,
+      settings.maxClipboardChars
+    );
+
+    if (parsed) {
+      if (parsed.oversized) {
+        return {
+          title: parsed.title,
+          url: parsedUrl,
+          source: "rendered-dom",
+          conversion: oversizedImportConversion(parsed.oversized, parsed.responseOptions.length > 1),
+          responseOptions: parsed.responseOptions,
+          selectedResponseId: parsed.selectedResponseId,
+          canDownloadWord: false
+        };
+      }
+
+      return {
+        title: parsed.title,
+        url: parsedUrl,
+        source: "rendered-dom",
+        conversion: convertToRichHtml(parsed.markdown, settings),
+        responseOptions: parsed.responseOptions,
+        selectedResponseId: parsed.selectedResponseId
+      };
+    }
+  }
+
   const markdown = chooseBestMarkdownCandidate([...extracted.markdownCandidates, extracted.domMarkdownText]);
 
   if (markdown) {
+    if (markdown.length > settings.maxClipboardChars) {
+      return {
+        title: extracted.title || "Imported ChatGPT conversation",
+        url: parsedUrl,
+        source: "embedded-markdown",
+        conversion: oversizedImportConversion({
+          scope: "imported content",
+          estimatedChars: markdown.length,
+          maxChars: settings.maxClipboardChars
+        }, false),
+        responseOptions: [{ id: "all", label: "Whole imported content" }],
+        selectedResponseId: "all",
+        canDownloadWord: false
+      };
+    }
+
     return {
       title: extracted.title || "Imported ChatGPT conversation",
       url: parsedUrl,
@@ -49,6 +113,22 @@ export async function importSharedConversation(url: string, settings: AppSetting
 
   const domText = stripChatGptArtifacts(extracted.domText);
   const domHtml = stripChatGptArtifacts(extracted.domHtml);
+  if (Math.max(domText.length, domHtml.length) > settings.maxClipboardChars) {
+    return {
+      title: extracted.title || "Imported ChatGPT conversation",
+      url: parsedUrl,
+      source: "rendered-dom",
+      conversion: oversizedImportConversion({
+        scope: "imported content",
+        estimatedChars: Math.max(domText.length, domHtml.length),
+        maxChars: settings.maxClipboardChars
+      }, false),
+      responseOptions: [{ id: "all", label: "Whole imported content" }],
+      selectedResponseId: "all",
+      canDownloadWord: false
+    };
+  }
+
   const html = normalizeClipboardHtml(domHtml || wrapClipboardHtml(`<pre>${escapeHtml(domText)}</pre>`, true));
   return {
     title: extracted.title || "Imported ChatGPT conversation",
@@ -102,9 +182,21 @@ async function fetchSharedConversationFromApi(url: string, settings: AppSettings
       return undefined;
     }
 
-    const parsed = sharePayloadToMarkdown(await response.json(), responseId);
+    const parsed = sharePayloadToMarkdown(await response.json(), responseId, settings.maxClipboardChars);
     if (!parsed) {
       return undefined;
+    }
+
+    if (parsed.oversized) {
+      return {
+        title: parsed.title,
+        url,
+        source: "share-api",
+        conversion: oversizedImportConversion(parsed.oversized, parsed.responseOptions.length > 1),
+        responseOptions: parsed.responseOptions,
+        selectedResponseId: parsed.selectedResponseId,
+        canDownloadWord: false
+      };
     }
 
     return {
@@ -131,8 +223,9 @@ function extractShareId(url: string): string | undefined {
 
 export function sharePayloadToMarkdown(
   payload: unknown,
-  responseId = "all"
-): { title: string; markdown: string; responseOptions: ShareResponseOption[]; selectedResponseId: string } | undefined {
+  responseId = "all",
+  maxMarkdownChars = Number.POSITIVE_INFINITY
+): SharePayloadMarkdownResult | undefined {
   const root = asRecord(payload);
   if (!root) {
     return undefined;
@@ -149,6 +242,18 @@ export function sharePayloadToMarkdown(
   }
 
   const labelledMessages = labelShareMessages(visibleMessages);
+  return shareMessagesToMarkdown(title, labelledMessages, responseId, maxMarkdownChars);
+}
+
+function shareMessagesToMarkdown(
+  title: string,
+  messages: ShareMessageMarkdown[],
+  responseId: string,
+  maxMarkdownChars: number
+): SharePayloadMarkdownResult | undefined {
+  const labelledMessages = messages.some((message) => message.label)
+    ? messages as Array<ShareMessageMarkdown & { label: string }>
+    : labelShareMessages(messages);
   const assistantMessages = labelledMessages.filter((message) => message.role === "assistant");
   const responseOptions = [
     { id: "all", label: "Whole chat" },
@@ -160,6 +265,21 @@ export function sharePayloadToMarkdown(
   const selectedMessage = assistantMessages.find((message) => message.id === responseId);
   const selectedResponseId = selectedMessage ? selectedMessage.id : "all";
   const exportMessages = selectedMessage ? [selectedMessage] : labelledMessages;
+  const estimatedChars = estimateExportMarkdownLength(exportMessages);
+  if (estimatedChars > maxMarkdownChars) {
+    return {
+      title,
+      markdown: "",
+      responseOptions,
+      selectedResponseId,
+      oversized: {
+        scope: selectedMessage ? "selected response" : "whole chat",
+        estimatedChars,
+        maxChars: maxMarkdownChars
+      }
+    };
+  }
+
   const markdown = exportMessages.length === 1
     ? `## ${exportMessages[0].label}\n\n${exportMessages[0].markdown}`
     : exportMessages.map((message) => {
@@ -250,13 +370,54 @@ function extractShareMessage(entry: unknown, index: number): ShareMessageMarkdow
 }
 
 function summarizeResponse(markdown: string): string {
-  const summary = markdown
+  const summary = markdown.slice(0, 1_500)
     .replace(/```[\s\S]*?```/g, " code block ")
     .replace(/\\\[[\s\S]*?\\\]|\$\$[\s\S]*?\$\$/g, " equation ")
     .replace(/[#*_`>\-[\]()]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
   return (summary || "Math response").slice(0, 72);
+}
+
+function estimateExportMarkdownLength(messages: Array<ShareMessageMarkdown & { label: string }>): number {
+  if (messages.length === 1) {
+    return messages[0].label.length + messages[0].markdown.length + 5;
+  }
+
+  const separatorsLength = Math.max(0, messages.length - 1) * "\n\n---\n\n".length;
+  return messages.reduce((total, message) => total + message.label.length + message.markdown.length + 5, separatorsLength);
+}
+
+function oversizedImportConversion(details: OversizedImportDetails, canSelectResponses: boolean): ConversionResult {
+  const scope = details.scope;
+  const message = [
+    `This ${scope} is too large to format safely.`,
+    "",
+    `Estimated size: ${details.estimatedChars.toLocaleString()} characters.`,
+    `Current limit: ${details.maxChars.toLocaleString()} characters.`,
+    "",
+    canSelectResponses
+      ? "Choose a smaller GPT response from the Export content selector, then import again."
+      : "Try importing a smaller shared conversation or lowering the amount of copied content."
+  ].join("\n");
+
+  const html = wrapClipboardHtml([
+    "<h2>Import too large</h2>",
+    `<p>This ${escapeHtml(scope)} is too large to format safely.</p>`,
+    "<ul>",
+    `<li>Estimated size: ${details.estimatedChars.toLocaleString()} characters.</li>`,
+    `<li>Current limit: ${details.maxChars.toLocaleString()} characters.</li>`,
+    "</ul>",
+    `<p>${canSelectResponses
+      ? "Choose a smaller GPT response from the Export content selector, then import again."
+      : "Try importing a smaller shared conversation or lowering the amount of copied content."}</p>`
+  ].join(""), true);
+
+  return {
+    html,
+    plainText: message,
+    warnings: [message.replace(/\n+/g, " ")]
+  };
 }
 
 function extractContentText(content: Record<string, unknown>): string {
@@ -304,14 +465,70 @@ async function extractSharedPage(url: string): Promise<ExtractedShareContent> {
 
   try {
     await loadUrl(win, url);
-    await delay(2500);
+    await waitForSharedConversationContent(win, 12_000);
 
-    return await win.webContents.executeJavaScript(extractionScript, true) as ExtractedShareContent;
+    const extracted = await win.webContents.executeJavaScript(extractionScript, true) as ExtractedShareContent;
+    return {
+      ...extracted,
+      domMessages: normalizeExtractedDomMessages(extracted.domMessages)
+    };
   } finally {
     if (!win.isDestroyed()) {
       win.destroy();
     }
   }
+}
+
+async function waitForSharedConversationContent(win: BrowserWindow, timeoutMs: number): Promise<void> {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const state = await win.webContents.executeJavaScript(`
+(() => {
+  const messageCount = document.querySelectorAll('[data-message-author-role]').length;
+  const mathCount = document.querySelectorAll('[role="math"], [data-math-source], .katex').length;
+  const mainText = (document.querySelector('main')?.innerText || document.body.innerText || '').trim();
+  const isChallenge = /enable javascript and cookies|checking your browser|verify you are human/i.test(mainText);
+  const isLoginShell = /\\bLog in\\b[\\s\\S]{0,80}\\bSign up for free\\b/i.test(mainText) && messageCount === 0;
+  return { messageCount, mathCount, textLength: mainText.length, isChallenge, isLoginShell };
+})()
+    `, true) as { messageCount: number; mathCount: number; textLength: number; isChallenge: boolean; isLoginShell: boolean };
+
+    if (state.messageCount > 0 && state.textLength > 300) {
+      return;
+    }
+
+    if (!state.isChallenge && !state.isLoginShell && state.mathCount > 0 && state.textLength > 300) {
+      return;
+    }
+
+    await delay(500);
+  }
+
+  throw new Error("Could not find the shared conversation content. ChatGPT may still be loading, blocked, or requiring login.");
+}
+
+function normalizeExtractedDomMessages(messages: unknown): ShareMessageMarkdown[] {
+  if (!Array.isArray(messages)) {
+    return [];
+  }
+
+  return messages
+    .map((message, index) => {
+      const record = asRecord(message);
+      const role = firstString(record?.role) ?? "message";
+      const markdown = cleanCandidateText(firstString(record?.markdown) ?? "");
+      if (!markdown.trim()) {
+        return undefined;
+      }
+
+      return {
+        id: firstString(record?.id) ?? `dom-message-${index}`,
+        role,
+        markdown
+      };
+    })
+    .filter((message): message is ShareMessageMarkdown => Boolean(message));
 }
 
 function loadUrl(win: BrowserWindow, url: string): Promise<void> {
@@ -447,7 +664,7 @@ const extractionScript = `
 
   const cloneForExport = (node) => {
     const clone = node.cloneNode(true);
-    clone.querySelectorAll('script, style, button, textarea, input, select, nav, aside, form, [contenteditable="true"], [aria-label*="Copy"], [data-testid*="copy"]').forEach((el) => el.remove());
+    clone.querySelectorAll('script, style, button, textarea, input, select, nav, aside, form, [contenteditable="true"], [aria-label*="Copy"], [data-testid*="copy"], [data-file-citation-group-identity], [data-content-reference-start], [data-content-reference-end]').forEach((el) => el.remove());
     clone.querySelectorAll('[style]').forEach((el) => {
       const style = el.getAttribute('style') || '';
       const kept = style.split(';').map((part) => part.trim()).filter((part) => /^(text-align|font-style|font-weight|display|margin|padding|border-collapse|vertical-align)\\s*:/i.test(part));
@@ -525,7 +742,7 @@ const extractionScript = `
 
   const extractLatex = (node) => {
     if (!node || node.nodeType !== Node.ELEMENT_NODE) return '';
-    const dataLatex = node.getAttribute('data-latex') || node.getAttribute('data-tex');
+    const dataLatex = node.getAttribute('data-math-source') || node.getAttribute('data-latex') || node.getAttribute('data-tex') || node.getAttribute('aria-label');
     if (dataLatex && /\\\\|[_^=+\\-*/]|[A-Za-z]/.test(dataLatex)) return cleanMathText(dataLatex);
 
     const annotation = node.querySelector('annotation[encoding*="tex"], annotation[encoding*="TeX"], annotation[encoding*="latex"], annotation[encoding*="LaTeX"]');
@@ -538,17 +755,16 @@ const extractionScript = `
   };
 
   const replaceRenderedMath = (rootNode) => {
-    const mathNodes = Array.from(rootNode.querySelectorAll('.katex, math, [data-latex], [data-tex]'))
+    const mathNodes = Array.from(rootNode.querySelectorAll('[role="math"], [data-math-source], [data-latex], [data-tex], math'))
       .filter((node) => !node.closest('.gptmath-imported-math'));
 
     mathNodes.forEach((node) => {
-      if (!node.isConnected) return;
       if (node.closest('.katex') && !node.classList.contains('katex')) return;
 
       const latex = extractLatex(node);
       if (!latex) return;
 
-      const isDisplay = node.classList.contains('katex-display') || Boolean(node.closest('.katex-display')) || node.getAttribute('display') === 'block';
+      const isDisplay = node.classList.contains('katex-display') || Boolean(node.closest('.katex-display')) || Boolean(node.querySelector('.katex-display')) || node.getAttribute('display') === 'block' || /display\\s*:\\s*block/i.test(node.getAttribute('style') || '');
       const span = document.createElement('span');
       span.className = 'gptmath-imported-math';
       span.textContent = isDisplay ? '\\n\\n$$' + latex + '$$\\n\\n' : '$' + latex + '$';
@@ -674,7 +890,18 @@ const extractionScript = `
 
   const markdownRoot = messageNodes.length ? document.createElement('main') : null;
   let domMarkdownText = '';
+  let domMessages = [];
   if (messageNodes.length) {
+    domMessages = messageNodes.map((message, index) => {
+      const role = message.getAttribute('data-message-author-role') || 'message';
+      const markdown = cloneToMarkdown(message);
+      return {
+        id: message.getAttribute('data-message-id') || message.id || 'dom-message-' + index,
+        role,
+        markdown
+      };
+    }).filter((message) => message.markdown && message.markdown.trim());
+
     domMarkdownText = messageNodes.map((message) => {
       const role = message.getAttribute('data-message-author-role') || 'message';
       const heading = role === 'assistant' ? 'Assistant' : role === 'user' ? 'User' : role;
@@ -689,7 +916,8 @@ const extractionScript = `
     markdownCandidates,
     domHtml: root.innerHTML || '',
     domText: root.innerText || document.body.innerText || '',
-    domMarkdownText
+    domMarkdownText,
+    domMessages
   };
 })()
 `;

@@ -1,7 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { app } from "electron";
-import { defaultSettings, type AppSettings } from "../shared/types";
+import { defaultSettings, maxSafeFormatChars, type AppSettings } from "../shared/types";
+
+const legacyDefaultMaxClipboardChars = 120_000;
 
 export class SettingsStore {
   private readonly filePath: string;
@@ -46,11 +48,15 @@ export class SettingsStore {
 }
 
 function normalizeSettings(settings: AppSettings): AppSettings {
+  const maxClipboardChars = settings.maxClipboardChars === legacyDefaultMaxClipboardChars
+    ? defaultSettings.maxClipboardChars
+    : settings.maxClipboardChars;
+
   return {
     enabled: Boolean(settings.enabled),
     showToasts: Boolean(settings.showToasts),
     showPreviewOnConvert: Boolean(settings.showPreviewOnConvert),
-    maxClipboardChars: clampNumber(settings.maxClipboardChars, 1_000, 1_000_000, defaultSettings.maxClipboardChars),
+    maxClipboardChars: clampNumber(maxClipboardChars, 1_000, maxSafeFormatChars, defaultSettings.maxClipboardChars),
     convertDiagrams: Boolean(settings.convertDiagrams)
   };
 }

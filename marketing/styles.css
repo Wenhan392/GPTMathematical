@@ -34,6 +34,29 @@ body {
   font-family: Inter, "Segoe UI", Arial, sans-serif;
 }
 
+@keyframes floatIn {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes softPulse {
+  0%,
+  100% {
+    box-shadow: 0 12px 32px rgba(37, 99, 235, 0.22);
+  }
+
+  50% {
+    box-shadow: 0 18px 48px rgba(37, 99, 235, 0.36);
+  }
+}
+
 img {
   display: block;
   max-width: 100%;
@@ -60,6 +83,12 @@ a {
   background: rgba(12, 20, 18, 0.76);
   border-bottom: 1px solid rgba(255, 255, 255, 0.14);
   backdrop-filter: blur(16px);
+  transition: background 180ms ease, box-shadow 180ms ease;
+}
+
+.site-header.scrolled {
+  background: rgba(15, 23, 42, 0.88);
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.16);
 }
 
 .brand,
@@ -268,6 +297,10 @@ h3 {
   box-shadow: 0 18px 42px rgba(17, 24, 22, 0.22);
 }
 
+.hero-float-cta .button.primary {
+  animation: softPulse 3.2s ease-in-out infinite;
+}
+
 .button.primary {
   color: #ffffff;
   background: var(--blue);
@@ -353,6 +386,12 @@ h3 {
   border: 1px solid #cbd8ef;
   border-radius: 8px;
   box-shadow: var(--shadow);
+  transition: transform 220ms ease, box-shadow 220ms ease;
+}
+
+.product-shot img:hover {
+  transform: translateY(-4px) scale(1.01);
+  box-shadow: 0 30px 88px rgba(37, 99, 235, 0.22);
 }
 
 .workflow-band {
@@ -381,6 +420,17 @@ h3 {
   border-radius: 8px;
   background: var(--paper);
   box-shadow: 0 16px 44px rgba(17, 24, 22, 0.08);
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.step-card:hover,
+.feature-card:hover,
+.quote-card:hover,
+.price-card:hover,
+.comparison-column:hover {
+  transform: translateY(-4px);
+  border-color: rgba(37, 99, 235, 0.38);
+  box-shadow: 0 22px 58px rgba(37, 99, 235, 0.13);
 }
 
 .step-card {
@@ -431,6 +481,16 @@ h3 {
   font-size: 13px;
   font-weight: 950;
   text-transform: uppercase;
+}
+
+.feature-icon svg {
+  width: 25px;
+  height: 25px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .feature-card:nth-child(2n) .feature-icon {
@@ -666,7 +726,7 @@ details p {
   color: #ffffff;
   background:
     linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(29, 78, 216, 0.9)),
-    url("assets/product-hero.png") center / cover no-repeat;
+    url("assets/export-showcase.png") center / cover no-repeat;
 }
 
 .final-cta .eyebrow {
@@ -695,6 +755,49 @@ details p {
 .site-footer span:first-child {
   color: #ffffff;
   font-weight: 880;
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(22px);
+}
+
+.reveal.is-visible {
+  animation: floatIn 620ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.reveal-delay-1.is-visible {
+  animation-delay: 80ms;
+}
+
+.reveal-delay-2.is-visible {
+  animation-delay: 160ms;
+}
+
+.reveal-delay-3.is-visible {
+  animation-delay: 240ms;
+}
+
+.reveal-delay-4.is-visible {
+  animation-delay: 320ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .reveal {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 @media (max-width: 1040px) {

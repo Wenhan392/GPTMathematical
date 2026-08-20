@@ -46,3 +46,33 @@ document.querySelectorAll('a[href^="#"]').forEach((link) => {
     target.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 });
+
+const header = document.querySelector(".site-header");
+const revealTargets = document.querySelectorAll(
+  ".product-band, .workflow-band, .features-band, .comparison-band, .testimonials-band, .pricing-band, .faq-band, .final-cta, .step-card, .feature-card, .quote-card, .price-card"
+);
+
+window.addEventListener("scroll", () => {
+  header?.classList.toggle("scrolled", window.scrollY > 12);
+}, { passive: true });
+
+if ("IntersectionObserver" in window) {
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add("is-visible");
+        observer.unobserve(entry.target);
+      }
+    });
+  }, {
+    rootMargin: "0px 0px -12% 0px",
+    threshold: 0.12
+  });
+
+  revealTargets.forEach((target, index) => {
+    target.classList.add("reveal", `reveal-delay-${(index % 4) + 1}`);
+    observer.observe(target);
+  });
+} else {
+  revealTargets.forEach((target) => target.classList.add("is-visible"));
+}

@@ -162,7 +162,7 @@ export function AccountPortal() {
               {account.downloadUrl ? (
                 <a className="button primary" href={account.downloadUrl}>Download Windows app</a>
               ) : (
-                <p>Set `APP_DOWNLOAD_URL` in production to show the installer download.</p>
+                <p>The Windows app download will appear here as soon as the launch build is published.</p>
               )}
               <button className="button quiet" type="button" onClick={openBillingPortal} disabled={loading}>
                 Manage billing

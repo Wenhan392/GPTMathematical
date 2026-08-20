@@ -145,16 +145,14 @@ a {
 }
 
 .hero {
-  min-height: 92vh;
+  min-height: min(920px, 56.25vw);
   position: relative;
   display: grid;
-  align-items: center;
-  padding: 116px clamp(20px, 5vw, 72px) 64px;
+  align-items: end;
+  padding: 116px clamp(20px, 5vw, 72px) 42px;
   color: #f8fffc;
   background:
-    image-set(
-      url("assets/product-hero.png") 1x
-    )
+    url("assets/hero-image.png")
     center / cover no-repeat;
 }
 
@@ -162,14 +160,33 @@ a {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(90deg, rgba(10, 16, 15, 0.9), rgba(10, 16, 15, 0.58) 48%, rgba(10, 16, 15, 0.2)),
-    linear-gradient(0deg, rgba(10, 16, 15, 0.7), rgba(10, 16, 15, 0.1) 36%, rgba(10, 16, 15, 0.2));
+    linear-gradient(0deg, rgba(15, 23, 42, 0.36), rgba(15, 23, 42, 0) 36%);
 }
 
 .hero-content {
   position: relative;
   width: 100%;
   max-width: 790px;
+}
+
+.screen-reader-copy {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.hero-float-cta {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .eyebrow {
@@ -727,7 +744,7 @@ details p {
     max-width: 100%;
     min-height: 90vh;
     padding: 96px 16px 58px;
-    background-position: 58% center;
+    background-position: left center;
   }
 
   .hero-content {

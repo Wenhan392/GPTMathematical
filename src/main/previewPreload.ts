@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { AppSettings } from "../shared/types";
 
 contextBridge.exposeInMainWorld("gptMathPreview", {
   downloadWord: async (): Promise<{ ok: boolean; message: string }> => {
@@ -17,5 +18,11 @@ contextBridge.exposeInMainWorld("gptMathPreview", {
     selectedResponseId?: string;
   }> => {
     return await ipcRenderer.invoke("preview:import-share", url, responseId);
+  },
+  loadSettings: async (): Promise<AppSettings> => {
+    return await ipcRenderer.invoke("settings:load");
+  },
+  saveSettings: async (settings: Partial<AppSettings>): Promise<AppSettings> => {
+    return await ipcRenderer.invoke("settings:save", settings);
   }
 });

@@ -17,6 +17,10 @@ The app starts in the system tray. Copy math-heavy ChatGPT output and the app wi
 npm test
 ```
 
+## Marketing site
+
+Open `marketing/index.html` in a browser to view the static sales website for the app.
+
 ## v1 Notes
 
 - Everything runs locally.

@@ -1,0 +1,48 @@
+const prices = {
+  monthly: {
+    starter: "$0",
+    pro: "$5",
+    team: "$12"
+  },
+  yearly: {
+    starter: "$0",
+    pro: "$39",
+    team: "$99"
+  }
+};
+
+const labels = {
+  monthly: "/seat",
+  yearly: "/seat per year"
+};
+
+const toggleButtons = document.querySelectorAll("[data-billing]");
+const starterPrice = document.querySelector("[data-price-starter]");
+const proPrice = document.querySelector("[data-price-pro]");
+const teamPrice = document.querySelector("[data-price-team]");
+const planLabels = document.querySelectorAll(".price-card small");
+
+toggleButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const billing = button.dataset.billing || "monthly";
+    toggleButtons.forEach((item) => item.classList.toggle("active", item === button));
+    starterPrice.textContent = prices[billing].starter;
+    proPrice.textContent = prices[billing].pro;
+    teamPrice.textContent = prices[billing].team;
+    planLabels.forEach((label) => {
+      label.textContent = labels[billing];
+    });
+  });
+});
+
+document.querySelectorAll('a[href^="#"]').forEach((link) => {
+  link.addEventListener("click", (event) => {
+    const target = document.querySelector(link.getAttribute("href"));
+    if (!target) {
+      return;
+    }
+
+    event.preventDefault();
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+});

@@ -409,7 +409,10 @@ function latexToOmml(latex: string): string {
 class LatexParser {
   private index = 0;
 
-  constructor(private readonly source: string) {}
+  constructor(
+    private readonly source: string,
+    private readonly forcedLetterStyle?: MathTextStyle
+  ) {}
 
   parse(): string {
     return this.parseExpression();
@@ -454,7 +457,22 @@ class LatexParser {
 
     if (/[A-Za-z]/.test(char)) {
       const word = this.takeWhile(/[A-Za-z]/);
-      return mathRun(word, /^[A-Z]?[a-z]{2,}$/.test(word) ? "normal" : "italic");
+      if (displayStyleCommands.has(word)) {
+        return "";
+      }
+      const standaloneStyled = this.parseStandaloneStyledWord(word);
+      if (standaloneStyled !== undefined) {
+        return standaloneStyled;
+      }
+      const flattenedStyled = this.parseFlattenedStyledWord(word);
+      if (flattenedStyled !== undefined) {
+        return flattenedStyled;
+      }
+      return mathRun(word, this.forcedLetterStyle ?? (/^[A-Z]?[a-z]{2,}$/.test(word) ? "normal" : "italic"));
+    }
+
+    if (char === "[" && this.tryConsumeOptionalSpacing()) {
+      return "";
     }
 
     if (/[0-9.]/.test(char)) {
@@ -471,13 +489,37 @@ class LatexParser {
     if (!command) {
       const escaped = this.source[this.index] ?? "";
       this.index += escaped ? 1 : 0;
+      if (escaped === "\\") {
+        this.tryConsumeOptionalSpacing();
+        return mathRun(" ");
+      }
       return mathRun(escaped);
     }
 
-    if (command === "frac") {
-      const numerator = this.parseRequiredGroupOrAtom();
-      const denominator = this.parseRequiredGroupOrAtom();
+    if (displayStyleCommands.has(command)) {
+      return "";
+    }
+
+    if (command === "frac" || command === "dfrac" || command === "tfrac") {
+      const numerator = this.parseFractionArgument();
+      const denominator = this.parseFractionArgument();
       return `<m:f><m:fPr><m:type m:val="bar"/></m:fPr><m:num>${numerator}</m:num><m:den>${denominator}</m:den></m:f>`;
+    }
+
+    if (command === "mathbf" || command === "boldsymbol" || command === "bm") {
+      return this.parseStyledGroupOrAtom("boldItalic");
+    }
+
+    if (command === "mathit") {
+      return this.parseStyledGroupOrAtom("italic");
+    }
+
+    if (command === "mathnormal") {
+      return this.parseStyledGroupOrAtom("italic");
+    }
+
+    if (command === "mathcal") {
+      return this.parseMathcalGroupOrAtom();
     }
 
     if (command === "sqrt") {
@@ -495,7 +537,16 @@ class LatexParser {
       if (environment === "cases") {
         return this.parseCasesEnvironment();
       }
-      if (environment === "aligned" || environment === "gathered" || environment === "matrix" || environment === "pmatrix" || environment === "bmatrix") {
+      if (
+        environment === "aligned" ||
+        environment === "gathered" ||
+        environment === "matrix" ||
+        environment === "pmatrix" ||
+        environment === "bmatrix" ||
+        environment === "vmatrix" ||
+        environment === "Vmatrix" ||
+        environment === "array"
+      ) {
         return this.parseEquationArrayEnvironment(environment);
       }
       return "";
@@ -531,7 +582,7 @@ class LatexParser {
       return `<m:acc><m:accPr><m:chr m:val="̈"/></m:accPr><m:e>${value}</m:e></m:acc>`;
     }
 
-    if (command === "text" || command === "mathrm" || command === "operatorname") {
+    if (command === "text" || command === "mathrm" || command === "operatorname" || command === "mathsf" || command === "mathtt") {
       return mathRun(this.groupText(), "normal");
     }
 
@@ -544,7 +595,12 @@ class LatexParser {
       return mathRun(spacingCommandMap[command]);
     }
 
-    if (command === "left" || command === "right") {
+    if (command === "left") {
+      return this.parseLeftRightGroup();
+    }
+
+    if (command === "right") {
+      this.takeDelimiter();
       return "";
     }
 
@@ -552,7 +608,62 @@ class LatexParser {
       return mathRun(operatorCommandMap[command], "normal");
     }
 
+    const flattenedStyled = this.parseFlattenedStyledWord(command);
+    if (flattenedStyled !== undefined) {
+      return flattenedStyled;
+    }
+
     return mathRun(symbolCommandMap[command] ?? command, symbolCommandMap[command] ? "normal" : "italic");
+  }
+
+  private parseFlattenedStyledWord(word: string): string | undefined {
+    const flattenedStylePrefixes: Array<{ prefix: string; style: MathTextStyle | "mathcal" | "none" }> = [
+      { prefix: "mathcal", style: "mathcal" },
+      { prefix: "mathbf", style: "boldItalic" },
+      { prefix: "boldsymbol", style: "boldItalic" },
+      { prefix: "mathit", style: "italic" },
+      { prefix: "mathnormal", style: "italic" },
+      { prefix: "mathrm", style: "normal" },
+      { prefix: "operatorname", style: "normal" },
+      { prefix: "text", style: "normal" }
+    ];
+
+    for (const { prefix, style } of flattenedStylePrefixes) {
+      if (!word.startsWith(prefix) || word.length === prefix.length) {
+        continue;
+      }
+
+      const value = word.slice(prefix.length);
+      if (style === "mathcal") {
+        return mathRun(toMathcalText(value), "normal");
+      }
+      if (style === "none") {
+        return mathRun(value, "normal");
+      }
+      return new LatexParser(value, style).parse();
+    }
+
+    return undefined;
+  }
+
+  private parseStandaloneStyledWord(word: string): string | undefined {
+    if (word === "mathcal") {
+      return this.parseMathcalGroupOrAtom();
+    }
+
+    if (word === "mathbf" || word === "boldsymbol" || word === "bm") {
+      return this.parseStyledGroupOrAtom("boldItalic");
+    }
+
+    if (word === "mathit" || word === "mathnormal") {
+      return this.parseStyledGroupOrAtom("italic");
+    }
+
+    if (word === "mathrm" || word === "operatorname" || word === "text") {
+      return this.parseStyledGroupOrAtom("normal");
+    }
+
+    return undefined;
   }
 
   private applyScripts(base: string): string {
@@ -595,6 +706,73 @@ class LatexParser {
     return this.parseAtom();
   }
 
+  private parseFractionArgument(): string {
+    this.skipSpaces();
+    if (this.peek() === "{") {
+      this.index += 1;
+      return this.parseExpression("}");
+    }
+
+    const atom = this.parseCompactFractionAtom();
+    return this.applyScripts(atom);
+  }
+
+  private parseCompactFractionAtom(): string {
+    const char = this.peek();
+    if (!char) {
+      return "";
+    }
+
+    if (char === "\\") {
+      return this.parseCommand();
+    }
+
+    if (char === "{") {
+      this.index += 1;
+      return this.parseExpression("}");
+    }
+
+    if (/[A-Za-z]/.test(char)) {
+      this.index += 1;
+      return mathRun(char, this.forcedLetterStyle ?? "italic");
+    }
+
+    if (/[0-9.]/.test(char)) {
+      this.index += 1;
+      return mathRun(char);
+    }
+
+    return this.parseAtom();
+  }
+
+  private parseStyledGroupOrAtom(style: MathTextStyle): string {
+    this.skipSpaces();
+    if (this.peek() === "{") {
+      const value = this.groupText();
+      return new LatexParser(value, style).parse();
+    }
+
+    const atomStart = this.index;
+    const atom = this.parseAtom();
+    if (this.source[atomStart] === "\\") {
+      return atom;
+    }
+    return atom.replace(/m:val="(?:p|i|b|bi)"/g, `m:val="${mathStyleValue(style)}"`);
+  }
+
+  private parseMathcalGroupOrAtom(): string {
+    this.skipSpaces();
+    if (this.peek() === "{") {
+      return mathRun(toMathcalText(this.groupText()), "normal");
+    }
+
+    if (/[A-Za-z]/.test(this.peek())) {
+      return mathRun(toMathcalText(this.takeWhile(/[A-Za-z]/)), "normal");
+    }
+
+    return this.parseAtom();
+  }
+
   private discardOptionalGroup(): void {
     this.skipSpaces();
     if (this.peek() !== "{") {
@@ -625,7 +803,15 @@ class LatexParser {
   }
 
   private parseEquationArrayEnvironment(environment: string): string {
+    if (environment === "array") {
+      this.discardOptionalGroup();
+    }
+
     const content = this.takeEnvironmentBody(environment);
+    if (matrixEnvironments.has(environment)) {
+      return this.parseMatrixEnvironment(environment, content);
+    }
+
     const rows = splitEnvironmentRows(content).map((row) => {
       const cells = splitEnvironmentCells(row);
       return cells.map((cell) => new LatexParser(cell.trim()).parse()).join(mathRun("   "));
@@ -640,7 +826,39 @@ class LatexParser {
       return `<m:d><m:dPr><m:begChr m:val="["/><m:endChr m:val="]"/><m:grow m:val="1"/></m:dPr><m:e>${array}</m:e></m:d>`;
     }
 
+    if (environment === "vmatrix") {
+      return `<m:d><m:dPr><m:begChr m:val="|"/><m:endChr m:val="|"/><m:grow m:val="1"/></m:dPr><m:e>${array}</m:e></m:d>`;
+    }
+
+    if (environment === "Vmatrix") {
+      return `<m:d><m:dPr><m:begChr m:val="‖"/><m:endChr m:val="‖"/><m:grow m:val="1"/></m:dPr><m:e>${array}</m:e></m:d>`;
+    }
+
     return array;
+  }
+
+  private parseMatrixEnvironment(environment: string, content: string): string {
+    const rows = splitEnvironmentRows(content).map((row) => {
+      const cells = splitEnvironmentCells(row);
+      return cells.map((cell) => new LatexParser(cell.trim()).parse());
+    }).filter((row) => row.length > 0);
+    const columnCount = Math.max(1, ...rows.map((row) => row.length));
+    const matrix = [
+      "<m:m>",
+      `<m:mPr><m:baseJc m:val="center"/><m:mcs><m:mc><m:mcPr><m:count m:val="${columnCount}"/><m:mcJc m:val="center"/></m:mcPr></m:mc></m:mcs></m:mPr>`,
+      rows.map((row) => {
+        const paddedCells = [...row, ...Array.from({ length: columnCount - row.length }, () => "")];
+        return `<m:mr>${paddedCells.map((cell) => `<m:e>${cell}</m:e>`).join("")}</m:mr>`;
+      }).join(""),
+      "</m:m>"
+    ].join("");
+
+    const delimiters = matrixDelimiters[environment];
+    if (!delimiters) {
+      return matrix;
+    }
+
+    return `<m:d><m:dPr><m:begChr m:val="${xml(delimiters.begin)}"/><m:endChr m:val="${xml(delimiters.end)}"/><m:grow m:val="1"/></m:dPr><m:e>${matrix}</m:e></m:d>`;
   }
 
   private takeEnvironmentBody(environment: string): string {
@@ -656,6 +874,86 @@ class LatexParser {
     const body = this.source.slice(this.index, match.index);
     this.index = match.index + match[0].length;
     return body;
+  }
+
+  private parseLeftRightGroup(): string {
+    const beginDelimiter = this.takeDelimiter();
+    const { body, endDelimiter } = this.takeLeftRightBody();
+    const value = new LatexParser(body, this.forcedLetterStyle).parse();
+    const begin = normalizeDelimiter(beginDelimiter);
+    const end = normalizeDelimiter(endDelimiter);
+
+    if (!begin && !end) {
+      return value;
+    }
+
+    return `<m:d><m:dPr><m:begChr m:val="${xml(begin)}"/><m:endChr m:val="${xml(end)}"/><m:grow m:val="1"/></m:dPr><m:e>${value}</m:e></m:d>`;
+  }
+
+  private takeLeftRightBody(): { body: string; endDelimiter: string } {
+    const start = this.index;
+    let cursor = this.index;
+    let depth = 0;
+
+    while (cursor < this.source.length) {
+      if (this.source[cursor] !== "\\") {
+        cursor += 1;
+        continue;
+      }
+
+      const commandStart = cursor + 1;
+      let commandEnd = commandStart;
+      while (commandEnd < this.source.length && /[A-Za-z]/.test(this.source[commandEnd])) {
+        commandEnd += 1;
+      }
+
+      const command = this.source.slice(commandStart, commandEnd);
+      if (command === "left") {
+        depth += 1;
+        cursor = commandEnd;
+        continue;
+      }
+
+      if (command === "right") {
+        if (depth > 0) {
+          depth -= 1;
+          cursor = commandEnd;
+          continue;
+        }
+
+        const body = this.source.slice(start, cursor);
+        this.index = commandEnd;
+        return { body, endDelimiter: this.takeDelimiter() };
+      }
+
+      cursor = commandEnd > commandStart ? commandEnd : cursor + 1;
+    }
+
+    this.index = this.source.length;
+    return { body: this.source.slice(start), endDelimiter: "" };
+  }
+
+  private takeDelimiter(): string {
+    this.skipSpaces();
+    if (this.peek() === "\\") {
+      this.index += 1;
+      const command = this.takeWhile(/[A-Za-z]/);
+      return delimiterCommandMap[command] ?? command;
+    }
+
+    const delimiter = this.peek();
+    this.index += delimiter ? 1 : 0;
+    return delimiter;
+  }
+
+  private tryConsumeOptionalSpacing(): boolean {
+    const match = this.source.slice(this.index).match(/^\[\s*-?\d+(?:\.\d+)?\s*(?:pt|em|ex|mu|mm|cm|in|pc)\s*\]/);
+    if (!match) {
+      return false;
+    }
+
+    this.index += match[0].length;
+    return true;
   }
 
   private groupText(): string {
@@ -700,10 +998,16 @@ class LatexParser {
 }
 
 function splitEnvironmentRows(content: string): string[] {
-  return content
+  return normalizeEnvironmentRowBreaks(content)
     .split(/\\\\(?:\[[^\]]+\])?/)
     .map((row) => row.trim())
     .filter(Boolean);
+}
+
+function normalizeEnvironmentRowBreaks(content: string): string {
+  return content
+    .replace(/\\\\\s*\[\s*-?\d+(?:\.\d+)?\s*(?:pt|em|ex|mu|mm|cm|in|pc)\s*\]/g, "\\\\")
+    .replace(/\[\s*-?\d+(?:\.\d+)?\s*(?:pt|em|ex|mu|mm|cm|in|pc)\s*\]/g, "");
 }
 
 function splitEnvironmentCells(row: string): string[] {
@@ -713,8 +1017,23 @@ function splitEnvironmentCells(row: string): string[] {
     .filter(Boolean);
 }
 
-function mathRun(text: string, style: "normal" | "italic" = "normal"): string {
-  return `<m:r><m:rPr><m:sty m:val="${style === "italic" ? "i" : "p"}"/></m:rPr><m:t xml:space="preserve">${xml(text)}</m:t></m:r>`;
+type MathTextStyle = "normal" | "italic" | "bold" | "boldItalic";
+
+function mathRun(text: string, style: MathTextStyle = "normal"): string {
+  return `<m:r><m:rPr><m:sty m:val="${mathStyleValue(style)}"/></m:rPr><m:t xml:space="preserve">${xml(text)}</m:t></m:r>`;
+}
+
+function mathStyleValue(style: MathTextStyle): string {
+  if (style === "italic") {
+    return "i";
+  }
+  if (style === "bold") {
+    return "b";
+  }
+  if (style === "boldItalic") {
+    return "bi";
+  }
+  return "p";
 }
 
 const spacingCommandMap: Record<string, string> = {
@@ -728,6 +1047,43 @@ const spacingCommandMap: Record<string, string> = {
   medspace: " ",
   thickspace: " ",
   hspace: " "
+};
+
+const displayStyleCommands = new Set([
+  "displaystyle",
+  "textstyle",
+  "scriptstyle",
+  "scriptscriptstyle"
+]);
+
+const matrixEnvironments = new Set([
+  "matrix",
+  "pmatrix",
+  "bmatrix",
+  "vmatrix",
+  "Vmatrix",
+  "array"
+]);
+
+const matrixDelimiters: Record<string, { begin: string; end: string }> = {
+  pmatrix: { begin: "(", end: ")" },
+  bmatrix: { begin: "[", end: "]" },
+  vmatrix: { begin: "|", end: "|" },
+  Vmatrix: { begin: "‖", end: "‖" }
+};
+
+const delimiterCommandMap: Record<string, string> = {
+  lbrace: "{",
+  rbrace: "}",
+  langle: "⟨",
+  rangle: "⟩",
+  lvert: "|",
+  rvert: "|",
+  lVert: "‖",
+  rVert: "‖",
+  vert: "|",
+  Vert: "‖",
+  backslash: "\\"
 };
 
 const operatorCommandMap: Record<string, string> = {
@@ -833,6 +1189,72 @@ const symbolCommandMap: Record<string, string> = {
 
 const symbolMap: Record<string, string> = {
   "−": "-"
+};
+
+function normalizeDelimiter(delimiter: string): string {
+  if (delimiter === ".") {
+    return "";
+  }
+  return delimiter;
+}
+
+function toMathcalText(value: string): string {
+  return value.replace(/[A-Za-z]/g, (letter) => mathcalLetterMap[letter] ?? letter);
+}
+
+const mathcalLetterMap: Record<string, string> = {
+  A: "𝒜",
+  B: "ℬ",
+  C: "𝒞",
+  D: "𝒟",
+  E: "ℰ",
+  F: "ℱ",
+  G: "𝒢",
+  H: "ℋ",
+  I: "ℐ",
+  J: "𝒥",
+  K: "𝒦",
+  L: "ℒ",
+  M: "ℳ",
+  N: "𝒩",
+  O: "𝒪",
+  P: "𝒫",
+  Q: "𝒬",
+  R: "ℛ",
+  S: "𝒮",
+  T: "𝒯",
+  U: "𝒰",
+  V: "𝒱",
+  W: "𝒲",
+  X: "𝒳",
+  Y: "𝒴",
+  Z: "𝒵",
+  a: "𝒶",
+  b: "𝒷",
+  c: "𝒸",
+  d: "𝒹",
+  e: "ℯ",
+  f: "𝒻",
+  g: "ℊ",
+  h: "𝒽",
+  i: "𝒾",
+  j: "𝒿",
+  k: "𝓀",
+  l: "𝓁",
+  m: "𝓂",
+  n: "𝓃",
+  o: "ℴ",
+  p: "𝓅",
+  q: "𝓆",
+  r: "𝓇",
+  s: "𝓈",
+  t: "𝓉",
+  u: "𝓊",
+  v: "𝓋",
+  w: "𝓌",
+  x: "𝓍",
+  y: "𝓎",
+  z: "𝓏"
 };
 
 function htmlToReadableText(html: string): string {

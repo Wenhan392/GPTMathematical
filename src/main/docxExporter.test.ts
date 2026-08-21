@@ -91,6 +91,7 @@ describe("docxExporter", () => {
     expect(documentXml).toContain("<m:borderBox>");
     expect(documentXml).toContain("<m:d>");
     expect(documentXml).toContain("<m:eqArr>");
+    expect(documentXml).toContain("<m:m>");
     expect(documentXml).toContain("<m:sSup>");
     expect(documentXml).toContain("<m:sSub>");
     expect(documentXml).not.toContain(">boxed<");
@@ -99,6 +100,161 @@ describe("docxExporter", () => {
     expect(documentXml).not.toContain(">bmatrix<");
     expect(documentXml).not.toContain(">end<");
     expect(documentXml).not.toContain("$$");
+  });
+
+  it("exports matrix-heavy linear algebra equations without leaking dfrac or mathbf words", () => {
+    const buffer = createWordDocumentBuffer({
+      title: "Linear algebra",
+      html: "",
+      plainText: [
+        "\\[",
+        "\\mathbf{A}\\mathbf{x} = \\mathbf{b}",
+        "\\]",
+        "",
+        "\\[",
+        "\\mathbf{A} = \\begin{bmatrix}",
+        "\\dfrac{3}{2} & -\\dfrac{7}{4} & \\sqrt{2} \\\\",
+        "\\dfrac{5}{3} & \\dfrac{11}{6} & -\\dfrac{\\pi}{4} \\\\",
+        "-\\sqrt{3} & \\dfrac{2}{5} & \\dfrac{9}{7}",
+        "\\end{bmatrix},\\quad",
+        "\\mathbf{x}=\\begin{bmatrix}x_1\\\\x_2\\\\x_3\\end{bmatrix}",
+        "\\]",
+        "",
+        "\\[",
+        "\\det(\\mathbf{A}) = \\begin{vmatrix}",
+        "\\dfrac{3}{2} & -\\dfrac{7}{4} & \\sqrt{2} \\\\",
+        "\\dfrac{5}{3} & \\dfrac{11}{6} & -\\dfrac{\\pi}{4} \\\\",
+        "-\\sqrt{3} & \\dfrac{2}{5} & \\dfrac{9}{7}",
+        "\\end{vmatrix}",
+        "\\]"
+      ].join("\n")
+    });
+
+    const documentXml = readZipEntry(buffer, "word/document.xml");
+    expect(documentXml).toContain("<m:f>");
+    expect(documentXml).toContain("<m:rad>");
+    expect(documentXml).toContain("<m:d>");
+    expect(documentXml).toContain("<m:m>");
+    expect(documentXml).toContain("<m:mr>");
+    expect(documentXml).toContain('m:val="bi"');
+    expect(documentXml).toContain('m:begChr m:val="["');
+    expect(documentXml).toContain('m:begChr m:val="|"');
+    const visibleText = xmlVisibleText(documentXml);
+    expect(visibleText).not.toContain("dfrac");
+    expect(visibleText).not.toContain("mathbf");
+    expect(visibleText).not.toContain("begin");
+    expect(visibleText).not.toContain("vmatrix");
+    expect(visibleText).not.toContain("end");
+  });
+
+  it("exports nested fractions and block matrices without leaking style commands", () => {
+    const buffer = createWordDocumentBuffer({
+      title: "Stress test",
+      html: "",
+      plainText: [
+        "A more complicated expression for testing nested fractions is",
+        "",
+        "\\[",
+        "\\mathcal{F}(\\alpha,\\beta)=",
+        "\\frac{\\displaystyle\\sum_{i=1}^{n}\\left[",
+        "\\frac{\\alpha_i^2 + \\sqrt{\\beta_i^2 + 4\\alpha_i\\beta_i}}{1 + \\frac{\\alpha_i}{\\beta_i + \\frac{1}{1+\\alpha_i^2}}}",
+        "\\right]}{\\displaystyle\\prod_{j=1}^{m}\\left(1 + \\frac{e^{-j\\lambda}}{j^2 + \\omega^2}\\right)}",
+        "\\]",
+        "",
+        "And a block matrix stress test:",
+        "",
+        "\\[",
+        "\\begin{bmatrix}",
+        "\\mathbf{A} & \\mathbf{B}^T & \\mathbf{0} \\\\[6pt]",
+        "\\mathbf{B} & -\\lambda\\mathbf{I} & \\mathbf{C} \\\\[8pt]",
+        "\\mathbf{0} & \\mathbf{C}^T & \\dfrac{\\partial^2\\Phi}{\\partial q_i\\partial q_j}",
+        "\\end{bmatrix}",
+        "\\begin{bmatrix}\\Delta\\mathbf{x}\\\\[6pt] \\Delta\\boldsymbol{\\lambda}\\\\[10pt] \\Delta\\mathbf{q}\\end{bmatrix}",
+        "= -\\begin{bmatrix}\\nabla_{\\mathbf{x}}\\mathcal{L}\\\\ \\mathbf{g}(\\mathbf{x})\\\\ \\nabla_{\\mathbf{q}}\\Phi\\end{bmatrix}.",
+        "\\]",
+        "",
+        "\\[",
+        "mathcalF(\\alpha,\\beta)=\\frac{displaystyle\\sum_{i=1}^{n}\\left[\\frac{\\alpha_i}{1+\\alpha_i^2}\\right]}{displaystyle\\prod_{j=1}^{m}\\left(1+\\frac{1}{j^2+\\omega^2}\\right)}",
+        "\\]",
+        "",
+        "\\[",
+        "\\begin{bmatrix}\\Delta mathbf x\\\\[6pt] \\Delta boldsymbol\\lambda\\\\[8pt] \\Delta mathbf q\\end{bmatrix}=\\begin{bmatrix}\\nabla_{mathbfx}mathcalL\\\\ mathbf g(mathbfx)\\\\ \\nabla_{mathbfq}\\Phi\\end{bmatrix}",
+        "\\]"
+      ].join("\n")
+    });
+
+    const documentXml = readZipEntry(buffer, "word/document.xml");
+    expect(documentXml).toContain("ℱ");
+    expect(documentXml).toContain("ℒ");
+    expect(documentXml).toContain("∑");
+    expect(documentXml).toContain("∏");
+    expect(documentXml).toContain("∂");
+    expect(documentXml).toContain("∇");
+    expect(documentXml).toContain("λ");
+    expect(documentXml).toContain("ω");
+    expect(documentXml).toContain("<m:f>");
+    expect(documentXml).toContain("<m:rad>");
+    expect(documentXml).toContain("<m:sSubSup>");
+    expect(documentXml).toContain("<m:d>");
+    expect(documentXml).toContain("<m:m>");
+    expect(documentXml).toContain("<m:mr>");
+    expect(documentXml).toContain('m:begChr m:val="["');
+    expect(documentXml).toContain('m:begChr m:val="("');
+    const visibleText = xmlVisibleText(documentXml);
+    expect(visibleText).not.toContain("displaystyle");
+    expect(visibleText).not.toContain("mathcal");
+    expect(visibleText).not.toContain("mathbf");
+    expect(visibleText).not.toContain("boldsymbol");
+    expect(visibleText).not.toContain("dfrac");
+    expect(visibleText).not.toContain("left");
+    expect(visibleText).not.toContain("right");
+    expect(visibleText).not.toContain("[6pt]");
+    expect(visibleText).not.toContain("[8pt]");
+    expect(visibleText).not.toContain("[10pt]");
+  });
+
+  it("keeps compact fractions inside matrices as vertical fractions with denominators", () => {
+    const buffer = createWordDocumentBuffer({
+      title: "Compact matrix fractions",
+      html: "",
+      plainText: [
+        "The matrix product is",
+        "",
+        "\\[",
+        "\\begin{bmatrix}",
+        "0 & -\\frac74 & \\sqrt2 \\\\",
+        "\\frac53 & 0 & -\\frac\\pi4 \\\\",
+        "-\\sqrt3 & \\frac25 & 0",
+        "\\end{bmatrix}",
+        "\\begin{bmatrix}1\\\\-\\frac12\\\\\\frac34\\end{bmatrix}",
+        "=",
+        "\\begin{bmatrix}\\frac78 + \\frac{3\\sqrt2}{4}\\\\\\frac53-\\frac{3\\pi}{16}\\\\-\\sqrt3-\\frac15\\end{bmatrix}",
+        "\\]",
+        "",
+        "Thus",
+        "",
+        "\\[",
+        "x^{(1)} = \\begin{bmatrix}",
+        "\\frac23\\left(\\frac54-\\frac{3\\sqrt2}{4}\\right) \\\\",
+        "\\frac6{11}\\left(-\\frac{64}{15}+\\frac{3\\pi}{16}\\right) \\\\",
+        "\\frac79\\left(\\frac{109}{20}+\\sqrt3\\right)",
+        "\\end{bmatrix}.",
+        "\\]"
+      ].join("\n")
+    });
+
+    const documentXml = readZipEntry(buffer, "word/document.xml");
+    expect(documentXml).toContain("<m:m>");
+    expect(documentXml).toContain("<m:mr>");
+    expect(documentXml).toContain("<m:f>");
+    expect(documentXml).toContain("<m:den><m:r><m:rPr><m:sty m:val=\"p\"/></m:rPr><m:t xml:space=\"preserve\">4</m:t></m:r></m:den>");
+    expect(documentXml).toContain("<m:den><m:r><m:rPr><m:sty m:val=\"p\"/></m:rPr><m:t xml:space=\"preserve\">3</m:t></m:r></m:den>");
+    expect(documentXml).toContain("<m:den><m:r><m:rPr><m:sty m:val=\"p\"/></m:rPr><m:t xml:space=\"preserve\">5</m:t></m:r></m:den>");
+    expect(documentXml).not.toContain("<m:den></m:den>");
+    const visibleText = xmlVisibleText(documentXml);
+    expect(visibleText).not.toContain("[6pt]");
+    expect(visibleText).not.toContain("[8pt]");
+    expect(visibleText).not.toContain("[10pt]");
   });
 
   it("exports inline math inside bold text as equations", () => {
@@ -176,4 +332,8 @@ function readZipEntry(buffer: Buffer, entryName: string): string {
   }
 
   throw new Error(`Missing ZIP entry: ${entryName}`);
+}
+
+function xmlVisibleText(xml: string): string {
+  return xml.replace(/<[^>]+>/g, "");
 }

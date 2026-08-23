@@ -1,4 +1,4 @@
-import { app, clipboard, dialog } from "electron";
+import { app, clipboard, dialog, shell } from "electron";
 import { ClipboardProcessor, electronClipboardPort } from "./clipboardProcessor";
 import { convertToRichHtml } from "../conversion/convert";
 import { detectConvertibleContent } from "../conversion/detect";
@@ -10,8 +10,7 @@ import { SettingsStore } from "./settings";
 import { openSettingsWindow, registerSettingsIpc } from "./settingsWindow";
 import { ToastController } from "./toastWindow";
 import { AppTray } from "./tray";
-import { LicenseStore } from "./licenseStore";
-import { showActivationWindow } from "./activationWindow";
+import { LicenseStore, type AccountState } from "./licenseStore";
 
 let tray: AppTray | undefined;
 let pollTimer: NodeJS.Timeout | undefined;
@@ -32,11 +31,6 @@ app.on("second-instance", () => {
 
 app.whenReady().then(async () => {
   const licenseStore = new LicenseStore();
-  const licenseStatus = await licenseStore.validateCachedLicense();
-  if (!licenseStatus.usable) {
-    await showActivationWindow(licenseStore);
-  }
-
   const settingsStore = new SettingsStore();
   const toast = new ToastController();
   const preview = new ClipboardPreviewController();
@@ -93,6 +87,16 @@ app.whenReady().then(async () => {
         throw new Error("Import a ChatGPT shared conversation before downloading a Word file.");
       }
 
+      const accountBeforeSave = await licenseStore.refreshAccountState();
+      const exportBlockMessage = exportGateMessage(accountBeforeSave);
+      if (exportBlockMessage) {
+        return {
+          ok: false,
+          message: exportBlockMessage,
+          account: accountBeforeSave
+        };
+      }
+
       const result = await dialog.showSaveDialog({
         title: "Save Word Document",
         defaultPath: suggestDocxFilename(latestWordExport.title),
@@ -100,15 +104,40 @@ app.whenReady().then(async () => {
       });
 
       if (result.canceled || !result.filePath) {
-        return "Save canceled.";
+        return {
+          message: "Save canceled.",
+          account: licenseStore.getAccountState()
+        };
+      }
+
+      const authorization = await licenseStore.authorizeExport("word");
+      if (!authorization.ok) {
+        return {
+          ok: false,
+          message: authorization.message,
+          account: licenseStore.getAccountState()
+        };
       }
 
       writeWordDocument(result.filePath, latestWordExport);
-      return `Saved Word file: ${result.filePath}`;
+      return {
+        message: `Saved Word file: ${result.filePath}`,
+        account: licenseStore.getAccountState()
+      };
     },
     downloadPdf: async () => {
       if (!latestWordExport) {
         throw new Error("Import a ChatGPT shared conversation before downloading a PDF file.");
+      }
+
+      const accountBeforeSave = await licenseStore.refreshAccountState();
+      const exportBlockMessage = exportGateMessage(accountBeforeSave);
+      if (exportBlockMessage) {
+        return {
+          ok: false,
+          message: exportBlockMessage,
+          account: accountBeforeSave
+        };
       }
 
       const result = await dialog.showSaveDialog({
@@ -118,13 +147,55 @@ app.whenReady().then(async () => {
       });
 
       if (result.canceled || !result.filePath) {
-        return "Save canceled.";
+        return {
+          message: "Save canceled.",
+          account: licenseStore.getAccountState()
+        };
+      }
+
+      const authorization = await licenseStore.authorizeExport("pdf");
+      if (!authorization.ok) {
+        return {
+          ok: false,
+          message: authorization.message,
+          account: licenseStore.getAccountState()
+        };
       }
 
       await writePdfDocument(result.filePath, latestWordExport);
-      return `Saved PDF file: ${result.filePath}`;
+      return {
+        message: `Saved PDF file: ${result.filePath}`,
+        account: licenseStore.getAccountState()
+      };
     },
-    importShare: importShareIntoPreview
+    importShare: importShareIntoPreview,
+    loadAccount: async () => licenseStore.refreshAccountState(),
+    activateFreeAccount: async (email: string) => {
+      const result = await licenseStore.activateFreeAccount(email);
+      return {
+        ok: result.ok,
+        message: result.message,
+        account: licenseStore.getAccountState()
+      };
+    },
+    openAccountPortal: async () => {
+      await shell.openExternal(`${webAppBaseUrl()}/account`);
+      return "Opened account portal in your browser.";
+    },
+    startCheckout: async (plan) => {
+      const result = await licenseStore.startCheckout(plan);
+      if (result.ok && result.url) {
+        await shell.openExternal(result.url);
+      }
+      return result;
+    },
+    openBillingPortal: async () => {
+      const result = await licenseStore.openBillingPortal();
+      if (result.ok && result.url) {
+        await shell.openExternal(result.url);
+      }
+      return result;
+    }
   });
 
   tray = new AppTray(settingsStore, {
@@ -146,6 +217,10 @@ app.whenReady().then(async () => {
 
   notify("Running in the tray.", "info");
 });
+
+function webAppBaseUrl(): string {
+  return (process.env.GPT_MATH_WEB_APP_URL || process.env.NEXT_PUBLIC_APP_URL || "https://gpt-mathematical-web.vercel.app").replace(/\/$/, "");
+}
 
 async function importSharedConversationStable(
   url: string,
@@ -187,6 +262,28 @@ function scoreImportedPlainText(text: string): number {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function exportGateMessage(account: AccountState): string | undefined {
+  if (!account.signedIn || account.status === "signed_out") {
+    return "Start a free account to export Word/PDF files.";
+  }
+
+  if (account.status === "revoked") {
+    return "This account has been revoked.";
+  }
+
+  if (account.status !== "active") {
+    return "Your paid plan is no longer active. Open the Account tab to manage billing or start a free account.";
+  }
+
+  if (account.quota?.limit !== null && account.quota?.remaining !== undefined && Number(account.quota.remaining) <= 0) {
+    return account.quota.periodEnd
+      ? `Free export limit reached. Your 15 exports reset on ${new Date(account.quota.periodEnd).toLocaleDateString()}. Open the Account tab to upgrade for unlimited exports.`
+      : "Free export limit reached. Open the Account tab to upgrade for unlimited exports.";
+  }
+
+  return undefined;
 }
 
 async function pollClipboard(

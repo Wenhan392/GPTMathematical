@@ -7,3 +7,8 @@ coverage/
 .env.*.local
 *.tsbuildinfo
 *.log
+release/
+release-build/
+
+.vercel
+.env*

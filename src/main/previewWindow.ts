@@ -1,5 +1,7 @@
+import fs from "node:fs";
 import path from "node:path";
-import { BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
+import type { AccountState, ExternalUrlResult, PaidPlanId } from "./licenseStore";
 
 export interface ClipboardPreviewContent {
   title: string;
@@ -25,10 +27,21 @@ export interface PreviewShareImportResult {
   selectedResponseId: string;
 }
 
+export interface PreviewExportResult {
+  ok?: boolean;
+  message: string;
+  account: AccountState;
+}
+
 export interface PreviewIpcHandlers {
-  downloadWord: () => Promise<string>;
-  downloadPdf: () => Promise<string>;
+  downloadWord: () => Promise<PreviewExportResult>;
+  downloadPdf: () => Promise<PreviewExportResult>;
   importShare: (url: string, responseId?: string) => Promise<PreviewShareImportResult>;
+  loadAccount: () => Promise<AccountState> | AccountState;
+  activateFreeAccount: (email: string) => Promise<{ ok: boolean; message: string; account: AccountState }>;
+  openAccountPortal: () => Promise<string>;
+  startCheckout: (plan: PaidPlanId) => Promise<ExternalUrlResult>;
+  openBillingPortal: () => Promise<ExternalUrlResult>;
 }
 
 export class ClipboardPreviewController {
@@ -58,43 +71,56 @@ export class ClipboardPreviewController {
       });
     }
 
-    const previewUrl = makePreviewUrl(content);
-    this.window.loadURL(previewUrl);
+    const previewHtml = makePreviewHtml(content);
+    this.loadPreviewHtml(previewHtml, renderVersion);
     if (content.stabilizeRender) {
       setTimeout(() => {
         if (!this.window || this.window.isDestroyed() || renderVersion !== this.renderVersion) {
           return;
         }
 
-        this.window.loadURL(previewUrl);
+        this.loadPreviewHtml(previewHtml, renderVersion);
       }, 250);
     }
     this.window.once("ready-to-show", () => this.window?.show());
     this.window.focus();
+  }
+
+  private loadPreviewHtml(html: string, renderVersion: number): void {
+    if (!this.window || this.window.isDestroyed()) {
+      return;
+    }
+
+    const previewFilePath = path.join(app.getPath("userData"), "preview.html");
+    fs.mkdirSync(path.dirname(previewFilePath), { recursive: true });
+    fs.writeFileSync(previewFilePath, html, "utf8");
+    void this.window.loadFile(previewFilePath, { query: { v: String(renderVersion) } });
   }
 }
 
 export function registerPreviewIpc(handlers: PreviewIpcHandlers): void {
   ipcMain.handle("preview:download-word", async () => {
     try {
-      const message = await handlers.downloadWord();
-      return { ok: true, message };
+      const result = await handlers.downloadWord();
+      return { ...result, ok: result.ok ?? true };
     } catch (error) {
       return {
         ok: false,
-        message: error instanceof Error ? error.message : "Could not save the Word document."
+        message: error instanceof Error ? error.message : "Could not save the Word document.",
+        account: await handlers.loadAccount()
       };
     }
   });
 
   ipcMain.handle("preview:download-pdf", async () => {
     try {
-      const message = await handlers.downloadPdf();
-      return { ok: true, message };
+      const result = await handlers.downloadPdf();
+      return { ...result, ok: result.ok ?? true };
     } catch (error) {
       return {
         ok: false,
-        message: error instanceof Error ? error.message : "Could not save the PDF document."
+        message: error instanceof Error ? error.message : "Could not save the PDF document.",
+        account: await handlers.loadAccount()
       };
     }
   });
@@ -110,9 +136,25 @@ export function registerPreviewIpc(handlers: PreviewIpcHandlers): void {
       };
     }
   });
+
+  ipcMain.handle("preview:account-load", async () => handlers.loadAccount());
+  ipcMain.handle("preview:account-activate-free", async (_event, email: string) => {
+    try {
+      return await handlers.activateFreeAccount(email);
+    } catch (error) {
+      return {
+        ok: false,
+        message: error instanceof Error ? error.message : "Could not start free account.",
+        account: await handlers.loadAccount()
+      };
+    }
+  });
+  ipcMain.handle("preview:account-open-portal", async () => ({ ok: true, message: await handlers.openAccountPortal() }));
+  ipcMain.handle("preview:account-start-checkout", async (_event, plan: PaidPlanId) => handlers.startCheckout(plan));
+  ipcMain.handle("preview:account-open-billing", async () => handlers.openBillingPortal());
 }
 
-function makePreviewUrl(content: ClipboardPreviewContent): string {
+function makePreviewHtml(content: ClipboardPreviewContent): string {
   const warnings = content.warnings.length
     ? `<div class="warnings">${content.warnings.map((warning) => `<div>${escapeHtml(warning)}</div>`).join("")}</div>`
     : "";
@@ -120,6 +162,7 @@ function makePreviewUrl(content: ClipboardPreviewContent): string {
   const actions = [
     `<button class="secondary-button" id="download-word" type="button"${canDownloadWord ? "" : " disabled"}>Download Word file</button>`,
     `<button class="secondary-button" id="download-pdf" type="button"${canDownloadWord ? "" : " disabled"}>Download PDF file</button>`,
+    `<span class="quota-pill" id="quota-pill">Checking access...</span>`,
     `<span id="download-status">${canDownloadWord ? "" : "Select a smaller import to export."}</span>`
   ].join("");
 
@@ -129,7 +172,7 @@ function makePreviewUrl(content: ClipboardPreviewContent): string {
     responseOptions: content.responseOptions ?? [],
     selectedResponseId: content.selectedResponseId ?? "all"
   });
-  const html = `
+  return `
 <!doctype html>
 <html>
 <head>
@@ -325,11 +368,51 @@ button:disabled {
   border-color: #94a3b8;
   background: #f8fafc;
 }
+.export-locked {
+  border-color: #cbd5e1;
+  color: #64748b;
+  background: #f8fafc;
+}
+.export-locked:hover {
+  border-color: #94a3b8;
+  color: #334155;
+  background: #eef2f7;
+}
 #download-status {
   max-width: 260px;
   color: #64748b;
   font-size: 12px;
   line-height: 1.3;
+}
+.quota-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  max-width: 230px;
+  padding: 0 9px;
+  border: 1px solid #c8d2df;
+  border-radius: 999px;
+  color: #334155;
+  background: #f8fafc;
+  font-size: 11px;
+  font-weight: 760;
+  line-height: 1;
+  white-space: nowrap;
+}
+.quota-pill.free {
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+  background: #eff6ff;
+}
+.quota-pill.unlimited {
+  border-color: #bbf7d0;
+  color: #166534;
+  background: #f0fdf4;
+}
+.quota-pill.blocked {
+  border-color: #fecaca;
+  color: #991b1b;
+  background: #fef2f2;
 }
 .status {
   margin-top: 7px;
@@ -518,6 +601,129 @@ section {
 #settings-state.error {
   color: #991b1b;
 }
+.account-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.95fr) minmax(300px, 1.05fr);
+  gap: 14px;
+}
+.account-card {
+  padding: 13px;
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+.account-card h3 {
+  margin: 0 0 8px;
+  color: #172033;
+  font-size: 13px;
+  font-weight: 800;
+}
+.quota-meter {
+  height: 8px;
+  margin: 10px 0 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+.quota-meter span {
+  display: block;
+  width: 0%;
+  height: 100%;
+  border-radius: inherit;
+  background: #2563eb;
+}
+.account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.plans-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+.plan-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 190px;
+  padding: 12px;
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+.plan-card.featured {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+.plan-card h3 {
+  margin: 0;
+  color: #172033;
+  font-size: 13px;
+  font-weight: 800;
+}
+.plan-price {
+  margin-top: 8px;
+  color: #0f172a;
+  font-size: 23px;
+  font-weight: 850;
+}
+.plan-price small {
+  margin-left: 3px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+.plan-card p {
+  margin: 8px 0 12px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.plan-card ul {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.plan-card li {
+  color: #44546a;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.plan-card li::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 999px;
+  background: #2563eb;
+  vertical-align: 1px;
+}
+.plan-card button {
+  width: 100%;
+  margin-top: auto;
+}
+.account-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+.account-status {
+  min-height: 18px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.account-status.ok {
+  color: #166534;
+}
+.account-status.error {
+  color: #991b1b;
+}
 .section-title {
   margin-bottom: 10px;
   display: flex;
@@ -584,7 +790,7 @@ pre {
   }
 
   .nav {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .nav-button {
@@ -607,6 +813,11 @@ pre {
   .home-grid {
     min-height: auto;
   }
+
+  .plans-grid,
+  .account-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
 </head>
@@ -617,6 +828,7 @@ pre {
     <nav class="nav">
       <button class="nav-button active" type="button" data-tab="home"><span class="nav-icon">H</span><span>Home</span></button>
       <button class="nav-button" type="button" data-tab="history"><span class="nav-icon">R</span><span>History</span></button>
+      <button class="nav-button" type="button" data-tab="account"><span class="nav-icon">A</span><span>Account</span></button>
       <button class="nav-button" type="button" data-tab="settings"><span class="nav-icon">S</span><span>Settings</span></button>
       <button class="nav-button" type="button" data-tab="info"><span class="nav-icon">I</span><span>Info</span></button>
     </nav>
@@ -720,6 +932,72 @@ pre {
           </div>
         </section>
       </div>
+      <div id="tab-account" class="tab-panel">
+        <section class="content-card">
+          <h2>Account</h2>
+          <p>Start a free account once in this app to unlock 15 Word/PDF exports each month. Paid upgrades use secure Stripe Checkout and refresh here automatically.</p>
+          <div class="account-grid">
+            <div class="account-card">
+              <h3>Current access</h3>
+              <div class="meta-line" id="account-plan">Loading account...</div>
+              <div class="quota-meter" id="quota-meter"><span></span></div>
+              <div class="meta-line" id="account-quota"></div>
+              <div class="account-actions">
+                <button class="secondary-button" id="open-account" type="button">Refresh account</button>
+                <button class="secondary-button" id="open-billing" type="button">Manage billing</button>
+              </div>
+            </div>
+            <div class="account-card">
+              <h3>Start free account</h3>
+              <div class="account-form">
+                <div class="field">
+                  <label for="account-email">Account email</label>
+                  <input id="account-email" type="email" placeholder="you@example.com">
+                </div>
+                <div class="account-actions">
+                  <button id="activate-free-account" type="button">Start free plan</button>
+                </div>
+                <div class="account-status" id="account-status">Enter your email to start free exports. Upgrade from this screen whenever you need unlimited exports.</div>
+              </div>
+            </div>
+          </div>
+          <div class="plans-grid" aria-label="Upgrade plans">
+            <div class="plan-card featured">
+              <h3>Plus Monthly</h3>
+              <div class="plan-price">$2<small>/month</small></div>
+              <p>Best first upgrade for regular document exports.</p>
+              <ul>
+                <li>Unlimited Word exports</li>
+                <li>Unlimited PDF exports</li>
+                <li>Cancel from billing portal</li>
+              </ul>
+              <button class="upgrade-button" data-checkout-plan="plus_monthly" type="button">Upgrade to Plus</button>
+            </div>
+            <div class="plan-card">
+              <h3>Plus Yearly</h3>
+              <div class="plan-price">$20<small>/year</small></div>
+              <p>For daily use at the best subscription value.</p>
+              <ul>
+                <li>Unlimited Word exports</li>
+                <li>Unlimited PDF exports</li>
+                <li>Lower yearly price</li>
+              </ul>
+              <button class="secondary-button upgrade-button" data-checkout-plan="plus_yearly" type="button">Upgrade yearly</button>
+            </div>
+            <div class="plan-card">
+              <h3>Lifetime</h3>
+              <div class="plan-price">$30<small>once</small></div>
+              <p>For early buyers who prefer one payment.</p>
+              <ul>
+                <li>Unlimited Word exports</li>
+                <li>Unlimited PDF exports</li>
+                <li>Lifetime updates for v1</li>
+              </ul>
+              <button class="secondary-button upgrade-button" data-checkout-plan="lifetime" type="button">Buy lifetime</button>
+            </div>
+          </div>
+        </section>
+      </div>
       <div id="tab-info" class="tab-panel">
         <section class="content-card">
           <h2>Info</h2>
@@ -749,9 +1027,11 @@ pre {
 </div>
 <script>
 const previewState = ${previewState};
+const canExportCurrentContent = ${canDownloadWord ? "true" : "false"};
 const downloadButton = document.getElementById("download-word");
 const pdfButton = document.getElementById("download-pdf");
 const downloadStatus = document.getElementById("download-status");
+const quotaPill = document.getElementById("quota-pill");
 const shareUrl = document.getElementById("share-url");
 const importButton = document.getElementById("import-share");
 const importStatus = document.getElementById("import-status");
@@ -768,42 +1048,90 @@ const settingsFields = {
 };
 const saveSettingsButton = document.getElementById("save-settings");
 const settingsState = document.getElementById("settings-state");
+const accountPlan = document.getElementById("account-plan");
+const accountQuota = document.getElementById("account-quota");
+const quotaMeter = document.querySelector("#quota-meter span");
+const accountEmail = document.getElementById("account-email");
+const activateFreeAccountButton = document.getElementById("activate-free-account");
+const accountStatus = document.getElementById("account-status");
+const openAccountButton = document.getElementById("open-account");
+const openBillingButton = document.getElementById("open-billing");
+const checkoutButtons = Array.from(document.querySelectorAll("[data-checkout-plan]"));
 let lastImportedUrl = previewState.shareUrl || "";
+let currentAccount = null;
+let checkoutPollTimer = 0;
 
 if (shareUrl) {
   shareUrl.value = previewState.shareUrl || "";
 }
 updateResponseOptions(previewState.responseOptions || [], previewState.selectedResponseId || "all");
 loadPreviewSettings();
+loadAccountState();
 
 navButtons.forEach((button) => {
   button.addEventListener("click", () => {
     const tab = button.getAttribute("data-tab");
-    navButtons.forEach((item) => item.classList.toggle("active", item === button));
-    tabPanels.forEach((panel) => panel.classList.toggle("active", panel.id === "tab-" + tab));
+    selectTab(tab);
   });
 });
 
 if (downloadButton && downloadStatus) {
   downloadButton.addEventListener("click", async () => {
+    const blocked = exportLockMessage(currentAccount);
+    if (blocked) {
+      downloadStatus.textContent = blocked;
+      if (accountStatus) {
+        accountStatus.className = "account-status";
+        accountStatus.textContent = blocked;
+      }
+      selectTab("account");
+      return;
+    }
+
     downloadButton.disabled = true;
     if (pdfButton) pdfButton.disabled = true;
     downloadStatus.textContent = "Saving...";
     const result = await window.gptMathPreview.downloadWord();
     downloadStatus.textContent = result.message;
+    if (result.account) {
+      renderAccountState(result.account);
+    }
+    if (!result.ok) {
+      selectTab("account");
+    }
     downloadButton.disabled = false;
     if (pdfButton) pdfButton.disabled = false;
+    updateExportButtons(currentAccount);
   });
 }
+
 if (pdfButton && downloadStatus) {
   pdfButton.addEventListener("click", async () => {
+    const blocked = exportLockMessage(currentAccount);
+    if (blocked) {
+      downloadStatus.textContent = blocked;
+      if (accountStatus) {
+        accountStatus.className = "account-status";
+        accountStatus.textContent = blocked;
+      }
+      selectTab("account");
+      return;
+    }
+
     pdfButton.disabled = true;
     if (downloadButton) downloadButton.disabled = true;
     downloadStatus.textContent = "Saving PDF...";
     const result = await window.gptMathPreview.downloadPdf();
     downloadStatus.textContent = result.message;
+    if (result.account) {
+      renderAccountState(result.account);
+    }
+    if (!result.ok) {
+      selectTab("account");
+    }
     pdfButton.disabled = false;
     if (downloadButton) downloadButton.disabled = false;
+    updateExportButtons(currentAccount);
   });
 }
 if (importButton && importStatus && shareUrl) {
@@ -867,6 +1195,76 @@ if (saveSettingsButton && settingsState) {
     }
   });
 }
+if (activateFreeAccountButton && accountEmail && accountStatus) {
+  activateFreeAccountButton.addEventListener("click", async () => {
+    activateFreeAccountButton.disabled = true;
+    accountStatus.className = "account-status";
+    accountStatus.textContent = "Starting free plan...";
+    const result = await window.gptMathPreview.activateFreeAccount(accountEmail.value);
+    accountStatus.className = result.ok ? "account-status ok" : "account-status error";
+    accountStatus.textContent = result.message;
+    renderAccountState(result.account);
+    activateFreeAccountButton.disabled = false;
+  });
+}
+if (openAccountButton && accountStatus) {
+  openAccountButton.addEventListener("click", async () => {
+    openAccountButton.disabled = true;
+    accountStatus.className = "account-status";
+    accountStatus.textContent = "Refreshing account...";
+    await loadAccountState();
+    accountStatus.textContent = currentAccount?.message || "Account refreshed.";
+    openAccountButton.disabled = false;
+  });
+}
+if (openBillingButton && accountStatus) {
+  openBillingButton.addEventListener("click", async () => {
+    openBillingButton.disabled = true;
+    accountStatus.className = "account-status";
+    accountStatus.textContent = "Opening billing...";
+    const result = await window.gptMathPreview.openBillingPortal();
+    accountStatus.className = result.ok ? "account-status ok" : "account-status error";
+    accountStatus.textContent = result.message;
+    openBillingButton.disabled = false;
+  });
+}
+checkoutButtons.forEach((button) => {
+  button.addEventListener("click", async () => {
+    const plan = button.getAttribute("data-checkout-plan");
+    if (!plan || !accountStatus) {
+      return;
+    }
+
+    if (!currentAccount?.signedIn) {
+      accountStatus.className = "account-status error";
+      accountStatus.textContent = "Start your free account first, then upgrade in one click.";
+      accountEmail?.focus();
+      return;
+    }
+
+    checkoutButtons.forEach((item) => item.disabled = true);
+    accountStatus.className = "account-status";
+    accountStatus.textContent = "Opening secure checkout...";
+    const result = await window.gptMathPreview.startCheckout(plan);
+    accountStatus.className = result.ok ? "account-status ok" : "account-status error";
+    accountStatus.textContent = result.ok
+      ? "Checkout opened. This screen will refresh after payment."
+      : result.message;
+    checkoutButtons.forEach((item) => item.disabled = false);
+    if (result.ok) {
+      startCheckoutPolling();
+    }
+  });
+});
+
+function selectTab(tab) {
+  if (!tab) {
+    return;
+  }
+
+  navButtons.forEach((item) => item.classList.toggle("active", item.getAttribute("data-tab") === tab));
+  tabPanels.forEach((panel) => panel.classList.toggle("active", panel.id === "tab-" + tab));
+}
 
 function updateResponseOptions(options, selectedId) {
   if (!responseField || !responseSelect || !importButton) {
@@ -919,11 +1317,163 @@ function applySettings(settings) {
   if (settingsFields.convertDiagrams) settingsFields.convertDiagrams.checked = Boolean(settings.convertDiagrams);
   if (settingsFields.maxClipboardChars) settingsFields.maxClipboardChars.value = String(settings.maxClipboardChars);
 }
+
+async function loadAccountState() {
+  try {
+    const account = await window.gptMathPreview.loadAccount();
+    renderAccountState(account);
+  } catch (error) {
+    if (accountPlan) accountPlan.textContent = "Account unavailable.";
+  }
+}
+
+function renderAccountState(account) {
+  if (!accountPlan || !accountQuota || !quotaMeter) {
+    return;
+  }
+
+  currentAccount = account;
+  if (accountEmail && account.email) accountEmail.value = account.email;
+
+  const planName = account.plan === "plus_subscription"
+    ? "Plus"
+    : account.plan === "lifetime"
+    ? "Lifetime"
+    : account.plan === "free"
+    ? "Free"
+    : "Signed out";
+  if (openBillingButton) {
+    openBillingButton.disabled = !account.billingPortalAvailable;
+  }
+  accountPlan.textContent = account.signedIn
+    ? planName + " - " + account.status + ". " + account.message
+    : account.message;
+  renderQuotaPill(account);
+  updateExportButtons(account);
+
+  if (!account.quota) {
+    accountQuota.textContent = "Start a free account before exporting Word/PDF files.";
+    quotaMeter.style.width = "0%";
+    return;
+  }
+
+  if (account.quota.limit === null) {
+    accountQuota.textContent = "Unlimited Word and PDF exports.";
+    quotaMeter.style.width = "100%";
+    return;
+  }
+
+  const used = Number(account.quota.used || 0);
+  const limit = Number(account.quota.limit || 15);
+  const remaining = Math.max(0, Number(account.quota.remaining ?? limit - used));
+  const reset = account.quota.periodEnd ? " Resets " + new Date(account.quota.periodEnd).toLocaleDateString() + "." : "";
+  accountQuota.textContent = used + " / " + limit + " exports used this month. " + remaining + " remaining." + reset;
+  quotaMeter.style.width = Math.min(100, Math.max(0, (used / limit) * 100)) + "%";
+}
+
+function exportLockMessage(account) {
+  if (!canExportCurrentContent) {
+    return undefined;
+  }
+
+  if (!account?.signedIn) {
+    return "Start a free account to export Word/PDF files.";
+  }
+
+  if (account.status === "revoked") {
+    return "This account has been revoked.";
+  }
+
+  if (account.status !== "active") {
+    return "Your paid plan is no longer active. Manage billing or start a free account.";
+  }
+
+  if (account.quota?.limit !== null && account.quota?.remaining !== undefined && account.quota.remaining <= 0) {
+    return account.quota.periodEnd
+      ? "Free export limit reached. Your 15 exports reset on " + new Date(account.quota.periodEnd).toLocaleDateString() + "."
+      : "Free export limit reached. Upgrade for unlimited exports.";
+  }
+
+  return undefined;
+}
+
+function updateExportButtons(account) {
+  const blocked = exportLockMessage(account);
+  [downloadButton, pdfButton].forEach((button) => {
+    if (!button || !canExportCurrentContent) {
+      return;
+    }
+    button.disabled = false;
+    button.classList.toggle("export-locked", Boolean(blocked));
+    button.setAttribute("aria-disabled", blocked ? "true" : "false");
+  });
+
+  if (downloadStatus && blocked) {
+    downloadStatus.textContent = blocked;
+  }
+}
+
+function startCheckoutPolling() {
+  if (checkoutPollTimer) {
+    clearInterval(checkoutPollTimer);
+  }
+
+  let attempts = 0;
+  checkoutPollTimer = window.setInterval(async () => {
+    attempts += 1;
+    await loadAccountState();
+
+    if (
+      currentAccount?.signedIn &&
+      currentAccount.status === "active" &&
+      (currentAccount.plan === "plus_subscription" || currentAccount.plan === "lifetime")
+    ) {
+      clearInterval(checkoutPollTimer);
+      checkoutPollTimer = 0;
+      if (accountStatus) {
+        accountStatus.className = "account-status ok";
+        accountStatus.textContent = "Payment confirmed. Unlimited exports are active.";
+      }
+      return;
+    }
+
+    if (attempts >= 40) {
+      clearInterval(checkoutPollTimer);
+      checkoutPollTimer = 0;
+      if (accountStatus) {
+        accountStatus.className = "account-status";
+        accountStatus.textContent = "Still waiting for Stripe to confirm. Click Refresh account in a moment.";
+      }
+    }
+  }, 3000);
+}
+
+function renderQuotaPill(account) {
+  if (!quotaPill) {
+    return;
+  }
+
+  quotaPill.className = "quota-pill";
+  if (!account.signedIn || !account.quota) {
+    quotaPill.className = "quota-pill blocked";
+    quotaPill.textContent = "Activate to export";
+    return;
+  }
+
+  if (account.quota.limit === null) {
+    quotaPill.className = "quota-pill unlimited";
+    quotaPill.textContent = "Unlimited exports";
+    return;
+  }
+
+  const limit = Number(account.quota.limit || 15);
+  const remaining = Math.max(0, Number(account.quota.remaining ?? limit - Number(account.quota.used || 0)));
+  quotaPill.className = remaining > 0 ? "quota-pill free" : "quota-pill blocked";
+  quotaPill.textContent = remaining + " free exports left";
+}
 </script>
 </body>
 </html>`;
-
-  return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
 
 function emptyPreviewHtml(text: string): string {

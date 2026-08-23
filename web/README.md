@@ -1,6 +1,6 @@
 # GPT Mathematical Web
 
-Next.js launch site, account portal, Stripe checkout, and license API for GPT Mathematical.
+Next.js launch site, account portal, Stripe checkout, free export quota, and license API for GPT Mathematical.
 
 ## Local setup
 
@@ -19,14 +19,15 @@ Run `supabase/schema.sql` in the Supabase SQL editor. The app uses:
 - Supabase Auth magic links for the account portal.
 - The service role key only in server routes.
 - Row-level security for customer-facing reads.
+- Free account licenses and monthly export usage metering.
 
 ## Stripe
 
 Create three Stripe Prices and set their IDs:
 
-- `STRIPE_MONTHLY_PRICE_ID` for the $2 monthly subscription
-- `STRIPE_YEARLY_PRICE_ID` for the $20 yearly subscription
-- `STRIPE_LIFETIME_PRICE_ID`
+- `STRIPE_MONTHLY_PRICE_ID` for Plus Monthly at $2/month
+- `STRIPE_YEARLY_PRICE_ID` for Plus Yearly at $20/year
+- `STRIPE_LIFETIME_PRICE_ID` for Lifetime at $30 once
 
 Set the webhook endpoint to:
 

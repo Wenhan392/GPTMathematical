@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createActivationToken, hashDeviceId } from "../../../../lib/licenseKeys";
-import { normalizeEmail } from "../../../../lib/fulfillment";
+import { getQuotaForLicense, normalizeEmail, type LicenseRecord } from "../../../../lib/fulfillment";
 import { getSupabaseAdmin } from "../../../../lib/supabaseAdmin";
 
 interface ActivationRequest {
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   const supabaseAdmin = getSupabaseAdmin();
   const { data: license, error } = await supabaseAdmin
     .from("licenses")
-    .select("id, license_key, customer_email, plan, status, expires_at, quantity")
+    .select("*")
     .eq("license_key", licenseKey)
     .maybeSingle();
 
@@ -60,12 +60,14 @@ export async function POST(request: Request) {
     ok: true,
     status: "active",
     plan: license.plan,
+    quota: await getQuotaForLicense(license as LicenseRecord),
     activationToken: createActivationToken({
       licenseKey: license.license_key,
       deviceIdHash,
       status: "active",
       plan: license.plan,
-      expiresAt: license.expires_at
+      expiresAt: license.expires_at,
+      email
     })
   });
 }

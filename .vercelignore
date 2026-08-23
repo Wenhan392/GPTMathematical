@@ -1,0 +1,13 @@
+node_modules/
+.next/
+.env
+.env.local
+.env.*.local
+*.tsbuildinfo
+*.log
+
+/dist/
+/release/
+/release-build/
+/marketing/
+/node_modules/

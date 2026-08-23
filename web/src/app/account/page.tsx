@@ -13,7 +13,7 @@ export default function AccountPage() {
           <Link href="/#pricing">Pricing</Link>
           <Link href="/#faq">FAQ</Link>
         </nav>
-        <Link className="nav-cta" href="/#pricing">Buy launch access</Link>
+        <Link className="nav-cta" href="/api/download">Download free</Link>
       </header>
       <AccountPortal />
     </>

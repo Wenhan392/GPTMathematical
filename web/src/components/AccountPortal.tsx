@@ -4,24 +4,34 @@ import { useEffect, useMemo, useState } from "react";
 import { createBrowserSupabase } from "../lib/supabaseBrowser";
 
 interface LicenseRow {
-  license_key: string;
+  id: string;
   plan: string;
   status: string;
   expires_at: string | null;
   stripe_subscription_id: string | null;
+  billing_plan: string;
   created_at: string;
 }
 
 interface AccountResponse {
   email: string;
+  plan: "free" | "plus_subscription" | "lifetime";
+  status: string;
+  quota: {
+    limit: number | null;
+    used: number;
+    remaining: number | null;
+    periodEnd: string | null;
+  };
   downloadUrl: string | null;
+  billingPortalAvailable: boolean;
   licenses: LicenseRow[];
 }
 
 export function AccountPortal() {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [email, setEmail] = useState("");
-  const [message, setMessage] = useState("Sign in with the same email used at checkout.");
+  const [message, setMessage] = useState("Sign in here only for billing support. Start and upgrade your account inside the desktop app.");
   const [loading, setLoading] = useState(false);
   const [account, setAccount] = useState<AccountResponse | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -118,7 +128,8 @@ export function AccountPortal() {
       <section className="portal-card">
         <p className="eyebrow">Account portal</p>
         <h1>Your GPT Mathematical account</h1>
-        <p>Use your checkout email to recover downloads, view license keys, and manage subscription billing.</p>
+        <p>Download the app directly. Start the free plan and upgrade from the desktop app; this page is only for billing support and account status.</p>
+        <a className="button primary" href="/api/download">Download free Windows app</a>
 
         <div className="portal-form">
           <label htmlFor="email">Email address</label>
@@ -137,18 +148,35 @@ export function AccountPortal() {
         {account ? (
           <div className="account-grid">
             <div className="account-panel">
-              <h2>Licenses</h2>
+              <h2>Current plan</h2>
+              <div className="license-card primary-license">
+                <div>
+                  <strong>{planLabel(account.plan)}</strong>
+                  <span>{account.status}</span>
+                </div>
+                {account.quota.limit === null ? (
+                  <small>Unlimited Word and PDF exports.</small>
+                ) : (
+                  <small>
+                    {account.quota.used} / {account.quota.limit} exports used this month
+                    {account.quota.periodEnd ? `, resets ${new Date(account.quota.periodEnd).toLocaleDateString()}` : ""}.
+                  </small>
+                )}
+              </div>
               {account.licenses.length ? (
                 <div className="license-list">
                   {account.licenses.map((license) => (
-                    <article className="license-card" key={license.license_key}>
+                    <article className="license-card" key={license.id}>
                       <div>
                         <strong>{license.plan}</strong>
                         <span>{license.status}</span>
                       </div>
-                      <code>{license.license_key}</code>
                       <small>
-                        {license.expires_at ? `Renews/checks through ${new Date(license.expires_at).toLocaleDateString()}` : "Lifetime access"}
+                        {license.expires_at
+                          ? `Renews/checks through ${new Date(license.expires_at).toLocaleDateString()}`
+                          : license.billing_plan === "free"
+                            ? "Free desktop account with 15 exports/month."
+                            : "Unlimited access"}
                       </small>
                     </article>
                   ))}
@@ -160,17 +188,30 @@ export function AccountPortal() {
             <div className="account-panel">
               <h2>Downloads and billing</h2>
               {account.downloadUrl ? (
-                <a className="button primary" href={account.downloadUrl}>Download Windows app</a>
+                <a className="button primary" href="/api/download">Download free Windows app</a>
               ) : (
                 <p>The Windows app download will appear here as soon as the launch build is published.</p>
               )}
-              <button className="button quiet" type="button" onClick={openBillingPortal} disabled={loading}>
-                Manage billing
-              </button>
+              <p>Upgrade options are managed from the desktop app Account tab.</p>
+              {account.billingPortalAvailable ? (
+                <button className="button quiet" type="button" onClick={openBillingPortal} disabled={loading}>
+                  Manage billing
+                </button>
+              ) : null}
             </div>
           </div>
         ) : null}
       </section>
     </main>
   );
+}
+
+function planLabel(plan: AccountResponse["plan"]): string {
+  if (plan === "plus_subscription") {
+    return "Plus";
+  }
+  if (plan === "lifetime") {
+    return "Lifetime";
+  }
+  return "Free";
 }

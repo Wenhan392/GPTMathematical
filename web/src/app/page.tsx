@@ -10,13 +10,13 @@ export default function HomePage() {
           <span>GPT Mathematical</span>
         </a>
         <nav className="nav-links" aria-label="Site">
-          <a href="#workflow">Workflow</a>
+          <a href="#demo">Product</a>
+          <a href="#workflow">How it works</a>
           <a href="#features">Features</a>
           <a href="#pricing">Pricing</a>
           <a href="#faq">FAQ</a>
-          <a href="/account">Account</a>
         </nav>
-        <a className="nav-cta" href="#pricing">Buy launch access</a>
+        <a className="nav-cta" href="/api/download">Download Windows .exe</a>
       </header>
 
       <main id="top">
@@ -31,40 +31,45 @@ export default function HomePage() {
             </p>
           </div>
           <div className="hero-float-cta" aria-label="Primary actions">
-            <a className="button primary" href="#pricing">Buy launch access</a>
+            <a className="button primary" href="/api/download">Download for free</a>
             <a className="button secondary" href="#demo">See the product</a>
+            <span className="hero-download-note">Windows installer. 15 free exports each month.</span>
           </div>
         </section>
 
-        <section className="trust-band" aria-label="Ideal customers">
-          <span>Built for teachers</span>
-          <span>Researchers</span>
-          <span>Analysts</span>
-          <span>Engineers</span>
-          <span>Students writing serious reports</span>
+        <section className="trust-band reveal" aria-label="Product highlights">
+          <span>Windows desktop app</span>
+          <span>15 free monthly exports</span>
+          <span>Word and PDF output</span>
+          <span>Secure Stripe upgrades</span>
+          <span>Local document conversion</span>
         </section>
 
-        <section id="demo" className="product-band" aria-labelledby="demo-title">
+        <section id="demo" className="product-band reveal" aria-labelledby="demo-title">
           <div className="section-copy">
             <p className="eyebrow">From ChatGPT math to submission-ready Word</p>
             <h2 id="demo-title">The fastest way to turn AI math into a clean document.</h2>
             <p>
               GPT Mathematical imports the ChatGPT share link, extracts the mathematical answer, formats
-              equations and Markdown structure, then shows a preview before you save the `.docx` or PDF.
+              equations and Markdown structure, then shows a preview before you save the `.docx` or PDF. The app is free to download, with 15 exports each month on the free plan.
             </p>
+            <div className="copy-actions">
+              <a className="button primary" href="/api/download">Download the installer</a>
+              <a className="button quiet compact" href="#pricing">Compare plans</a>
+            </div>
           </div>
-          <figure className="product-shot">
+          <figure className="product-shot showcase-shot">
             <Image
-              src="/assets/product-hero.png"
+              src="/assets/export-cleanly-showcase.png"
               alt="GPT Mathematical importing a ChatGPT share link, showing a preview, and downloading a Word document"
-              width={1424}
-              height={904}
-              priority
+              width={1672}
+              height={941}
+              sizes="(max-width: 1040px) 100vw, 56vw"
             />
           </figure>
         </section>
 
-        <section id="workflow" className="workflow-band" aria-labelledby="workflow-title">
+        <section id="workflow" className="workflow-band reveal" aria-labelledby="workflow-title">
           <div className="section-copy narrow">
             <p className="eyebrow">Three-step workflow</p>
             <h2 id="workflow-title">Built for the frustrating gap between correct math and usable formatting.</h2>
@@ -88,7 +93,31 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section id="features" className="features-band" aria-labelledby="features-title">
+        <section className="visual-story reveal" aria-labelledby="visual-story-title">
+          <div className="visual-story-media">
+            <Image
+              src="/assets/word-pdf-workflow-showcase.png"
+              alt="GPT Mathematical exporting ChatGPT math into Word and PDF while preserving equations"
+              width={1672}
+              height={941}
+              sizes="(max-width: 1040px) 100vw, 58vw"
+            />
+          </div>
+          <div className="visual-story-copy">
+            <p className="eyebrow">Cleaner output, fewer surprises</p>
+            <h2 id="visual-story-title">Preview the exact structure before it becomes a document.</h2>
+            <p>
+              The app is designed around the moment that usually breaks: moving a technical ChatGPT response into a file someone else can read. You get a formatted preview, a plain-text fallback, and clear export controls in one place.
+            </p>
+            <div className="mini-checks" aria-label="Workflow benefits">
+              <span>Math stays readable</span>
+              <span>Tables keep structure</span>
+              <span>Exports are tracked</span>
+            </div>
+          </div>
+        </section>
+
+        <section id="features" className="features-band reveal" aria-labelledby="features-title">
           <div className="section-copy">
             <p className="eyebrow">Professional output, less cleanup</p>
             <h2 id="features-title">ChatGPT math that looks right in Word.</h2>
@@ -98,9 +127,9 @@ export default function HomePage() {
               ["fx", "Formula-first conversion", "Recognizes common LaTeX and STEM notation so equations do not arrive as messy raw text."],
               ["md", "Markdown structure", "Keeps headings, lists, emphasis, code blocks, and tables organized for report-style writing."],
               ["pc", "Math preview", "Review the formatted result and fallback text before committing it to a document."],
-              ["doc", "Word and PDF export", "Download documents with supported LaTeX converted into polished visual output."],
+              ["doc", "Word and PDF export", "Free accounts get 15 exports each month; Plus and Lifetime unlock unlimited documents."],
               ["link", "Share-link workflow", "Use a ChatGPT share URL to bring the full answer into the app without manual copying and cleanup."],
-              ["key", "License activation", "Paid users can unlock the Windows app with a license key from their account portal."]
+              ["acct", "In-app plans", "Compare free and paid options in the desktop app, then upgrade there when unlimited exports matter."]
             ].map(([icon, title, copy]) => (
               <article className="feature-card" key={title}>
                 <div className="feature-icon" aria-hidden="true">{icon}</div>
@@ -111,7 +140,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="comparison-band" aria-labelledby="comparison-title">
+        <section className="comparison-band reveal" aria-labelledby="comparison-title">
           <div className="section-copy narrow">
             <p className="eyebrow">Why it sells</p>
             <h2 id="comparison-title">It removes the invisible tax from AI-assisted writing.</h2>
@@ -138,15 +167,15 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="testimonials-band" aria-labelledby="testimonials-title">
+        <section className="testimonials-band reveal" aria-labelledby="testimonials-title">
           <div className="section-copy">
-            <p className="eyebrow">Positioning</p>
+            <p className="eyebrow">Who it helps</p>
             <h2 id="testimonials-title">Made for people who live between AI and documents.</h2>
           </div>
           <div className="quote-grid">
             <figure className="quote-card">
               <blockquote>
-                The pitch is simple: stop reformatting ChatGPT equations by hand before they can go into Word.
+                Stop reformatting ChatGPT equations by hand before they can go into Word.
               </blockquote>
               <figcaption>Independent analysts</figcaption>
             </figure>
@@ -158,7 +187,7 @@ export default function HomePage() {
             </figure>
             <figure className="quote-card">
               <blockquote>
-                Formula formatting is the feature that makes long technical answers easier to preserve.
+                Formula formatting makes long technical answers easier to preserve and share.
               </blockquote>
               <figcaption>Research teams</figcaption>
             </figure>
@@ -167,7 +196,7 @@ export default function HomePage() {
 
         <PricingSection />
 
-        <section id="faq" className="faq-band" aria-labelledby="faq-title">
+        <section id="faq" className="faq-band reveal" aria-labelledby="faq-title">
           <div className="section-copy narrow">
             <p className="eyebrow">FAQ</p>
             <h2 id="faq-title">Questions buyers will ask first.</h2>
@@ -175,11 +204,15 @@ export default function HomePage() {
           <div className="faq-list">
             <details open>
               <summary>What happens after I buy?</summary>
-              <p>Stripe returns you to GPT Mathematical, where you can sign in, view your license key, and download the Windows app.</p>
+              <p>Download the Windows app for free first. Paid upgrades are selected from the app Account tab and completed with Stripe Checkout.</p>
             </details>
             <details>
-              <summary>How does activation work?</summary>
-              <p>Open the desktop app, enter your account email and license key, and the app stores a local activation token.</p>
+              <summary>What is included for free?</summary>
+              <p>Clipboard preview, ChatGPT share-link import, and 15 total Word/PDF exports per calendar month after activating a free account in the app.</p>
+            </details>
+            <details>
+              <summary>How do unlimited exports work?</summary>
+              <p>Plus monthly, Plus yearly, and Lifetime plans remove the export limit. You can compare plans, upgrade, and manage billing from the desktop Account tab.</p>
             </details>
             <details>
               <summary>Is tax enabled?</summary>
@@ -188,10 +221,13 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="final-cta" aria-labelledby="final-title">
-          <p className="eyebrow">Ready for launch packaging</p>
+        <section className="final-cta reveal" aria-labelledby="final-title">
+          <p className="eyebrow">Free to try</p>
           <h2 id="final-title">Give technical writers a reliable way to get ChatGPT mathematics into Word.</h2>
-          <a className="button primary" href="#pricing">Buy launch access</a>
+          <div className="final-actions">
+            <a className="button primary" href="/api/download">Download for free</a>
+            <a className="button secondary" href="#pricing">View pricing</a>
+          </div>
         </section>
       </main>
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { normalizeEmail, readablePlan } from "../../../lib/fulfillment";
+import { getAppDownloadUrl } from "../../../lib/download";
+import { getEffectiveEntitlement, normalizeEmail, readablePlan } from "../../../lib/fulfillment";
 import { getSupabaseAdmin } from "../../../lib/supabaseAdmin";
 
 export async function GET(request: Request) {
@@ -17,13 +18,11 @@ export async function GET(request: Request) {
   const userId = data.user.id;
   const email = normalizeEmail(data.user.email);
 
-  await supabaseAdmin.from("users").upsert({ id: userId, email }, { onConflict: "id" });
-  await supabaseAdmin.from("licenses").update({ user_id: userId }).eq("customer_email", email);
-  await supabaseAdmin.from("stripe_customers").update({ user_id: userId }).eq("customer_email", email);
+  const entitlement = await getEffectiveEntitlement({ userId, email });
 
   const { data: licenses, error: licenseError } = await supabaseAdmin
     .from("licenses")
-    .select("license_key, plan, status, expires_at, stripe_subscription_id, created_at")
+    .select("id, plan, status, expires_at, stripe_subscription_id, created_at, billing_plan")
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
 
@@ -33,7 +32,11 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     email,
-    downloadUrl: process.env.APP_DOWNLOAD_URL || null,
+    plan: entitlement.license.plan,
+    status: entitlement.license.status,
+    quota: entitlement.quota,
+    downloadUrl: getAppDownloadUrl(),
+    billingPortalAvailable: entitlement.billingPortalAvailable,
     licenses: (licenses || []).map((license) => ({
       ...license,
       plan: readablePlan(license.plan)

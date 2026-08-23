@@ -3,16 +3,18 @@ import type Stripe from "stripe";
 import { checkoutPlans, normalizeQuantity, type PaidPlanId } from "../../../lib/plans";
 import { requiredEnv, siteUrl } from "../../../lib/env";
 import { getStripe, integrationIdentifier } from "../../../lib/stripe";
+import { normalizeEmail } from "../../../lib/fulfillment";
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json() as { plan?: PaidPlanId; quantity?: number };
+    const body = await request.json() as { plan?: PaidPlanId; quantity?: number; email?: string };
     const plan = body.plan ? checkoutPlans[body.plan] : undefined;
     if (!plan) {
       return NextResponse.json({ error: "Unknown checkout plan." }, { status: 400 });
     }
 
     const quantity = normalizeQuantity(plan, body.quantity);
+    const customerEmail = normalizeEmail(body.email);
     const baseUrl = siteUrl();
     const checkoutParams: Stripe.Checkout.SessionCreateParams & { integration_identifier: string } = {
       mode: plan.mode,
@@ -23,6 +25,7 @@ export async function POST(request: Request) {
       success_url: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/#pricing`,
       allow_promotion_codes: true,
+      customer_email: customerEmail || undefined,
       customer_creation: plan.mode === "payment" ? "always" : undefined,
       client_reference_id: plan.id,
       metadata: {

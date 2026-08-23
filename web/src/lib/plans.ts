@@ -1,6 +1,6 @@
-export type PaidPlanId = "monthly" | "yearly" | "lifetime";
+export type PaidPlanId = "plus_monthly" | "plus_yearly" | "lifetime";
 
-export type LicensePlan = "subscription" | "lifetime";
+export type LicensePlan = "free" | "plus_subscription" | "lifetime";
 
 export interface CheckoutPlan {
   id: PaidPlanId;
@@ -12,22 +12,24 @@ export interface CheckoutPlan {
   maxQuantity: number;
 }
 
+export const freeExportLimit = 15;
+
 export const checkoutPlans: Record<PaidPlanId, CheckoutPlan> = {
-  monthly: {
-    id: "monthly",
-    name: "Monthly Subscription",
+  plus_monthly: {
+    id: "plus_monthly",
+    name: "Plus Monthly",
     priceEnv: "STRIPE_MONTHLY_PRICE_ID",
     mode: "subscription",
-    licensePlan: "subscription",
+    licensePlan: "plus_subscription",
     minQuantity: 1,
     maxQuantity: 1
   },
-  yearly: {
-    id: "yearly",
-    name: "Yearly Subscription",
+  plus_yearly: {
+    id: "plus_yearly",
+    name: "Plus Yearly",
     priceEnv: "STRIPE_YEARLY_PRICE_ID",
     mode: "subscription",
-    licensePlan: "subscription",
+    licensePlan: "plus_subscription",
     minQuantity: 1,
     maxQuantity: 1
   },

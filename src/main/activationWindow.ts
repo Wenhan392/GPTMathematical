@@ -9,8 +9,8 @@ export function showActivationWindow(licenseStore: LicenseStore): Promise<void> 
   return new Promise((resolve) => {
     let activated = false;
     if (!handlersRegistered) {
-      ipcMain.handle("activation:activate", async (_event, email: string, licenseKey: string) => {
-        const result = await licenseStore.activate(email, licenseKey);
+      ipcMain.handle("activation:activate", async (_event, email: string) => {
+        const result = await licenseStore.activateFreeAccount(email);
         if (result.ok) {
           activated = true;
           resolve();
@@ -26,7 +26,7 @@ export function showActivationWindow(licenseStore: LicenseStore): Promise<void> 
       height: 520,
       minWidth: 460,
       minHeight: 460,
-      title: "Activate GPT Mathematical",
+      title: "Start GPT Mathematical",
       resizable: true,
       webPreferences: {
         preload: path.join(__dirname, "activationPreload.js"),
@@ -51,7 +51,7 @@ function makeActivationUrl(): string {
 <html>
 <head>
 <meta charset="utf-8">
-<title>Activate GPT Mathematical</title>
+<title>Start GPT Mathematical</title>
 <style>
 html,
 body {
@@ -169,26 +169,23 @@ button:disabled {
 <body>
 <main class="card">
   <div class="brand"><span class="mark"></span><span>GPT Mathematical</span></div>
-  <h1>Activate your license</h1>
-  <p>Sign in to your account portal after purchase, copy your license key, then paste it here to unlock the Windows app.</p>
+  <h1>Start your free account</h1>
+  <p>Enter your email once to unlock 15 free Word/PDF exports each month on this computer.</p>
   <label for="email">Account email</label>
   <input id="email" type="email" autocomplete="email" placeholder="you@example.com">
-  <label for="license">License key</label>
-  <input id="license" type="text" autocomplete="off" placeholder="GPTM-XXXXX-XXXXX-XXXXX-XXXXX">
-  <button id="activate" type="button">Activate</button>
-  <div id="status">A short offline grace period is available after successful activation.</div>
+  <button id="activate" type="button">Start free account</button>
+  <div id="status">Paid upgrades are available from the Account tab after the app opens.</div>
 </main>
 <script>
 const email = document.getElementById("email");
-const license = document.getElementById("license");
 const button = document.getElementById("activate");
 const status = document.getElementById("status");
 
 button.addEventListener("click", async () => {
   button.disabled = true;
   status.className = "";
-  status.textContent = "Activating...";
-  const result = await window.gptMathActivation.activate(email.value, license.value);
+  status.textContent = "Starting free account...";
+  const result = await window.gptMathActivation.activate(email.value);
   status.className = result.ok ? "ok" : "error";
   status.textContent = result.message;
   button.disabled = false;

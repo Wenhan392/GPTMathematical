@@ -1,5 +1,14 @@
 node_modules/
 dist/
+.next/
 coverage/
 .env
+.env.local
+.env.*.local
+*.tsbuildinfo
 *.log
+release/
+release-build/
+
+.vercel
+.env*
